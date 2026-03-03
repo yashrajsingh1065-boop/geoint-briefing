@@ -9,11 +9,29 @@ logger = logging.getLogger(__name__)
 # Import lazily inside the function to avoid circular imports at module load time
 
 
+def _fetch_market_data(date_str: str) -> None:
+    """Fetch market indices and save snapshot. Always runs independently."""
+    try:
+        from market.fetcher import fetch_market_data
+        from ai.analyst import generate_market_summary
+        from storage.database import save_market_snapshot
+
+        logger.info("Fetching market indices...")
+        indices = fetch_market_data()
+        if indices:
+            summary = generate_market_summary(indices)
+            save_market_snapshot(date_str, indices, summary)
+            logger.info("Market snapshot saved (%d indices)", len(indices))
+    except Exception as exc:
+        logger.warning("Market data fetch failed (non-fatal): %s", exc)
+
+
 def run_daily_pipeline() -> None:
     """
     The main pipeline orchestrator. Runs all stages in sequence:
     fetch → clean → save → deduplicate → cluster → analyze → persist → open browser.
-    Safe to call multiple times per day — skips if today's briefing is already complete.
+    Safe to call multiple times per day — skips briefing if already complete,
+    but always refreshes market data.
     """
     from storage import database as db
     from ingestion.fetcher import fetch_all_feeds
@@ -26,7 +44,10 @@ def run_daily_pipeline() -> None:
     date_str = date.today().isoformat()
     logger.info("=== Daily pipeline starting for %s ===", date_str)
 
-    # Skip if already done
+    # Always refresh market data regardless of briefing status
+    _fetch_market_data(date_str)
+
+    # Skip briefing pipeline if already done
     existing = db.get_briefing_by_date(date_str)
     if existing and existing["status"] == "complete":
         logger.info("Briefing for %s already complete — skipping.", date_str)
@@ -94,22 +115,7 @@ def run_daily_pipeline() -> None:
         db.mark_briefing_complete(briefing_id)
         logger.info("=== Briefing complete: %d events saved ===", len(analyses))
 
-        # 7. Fetch market data and generate summary
-        try:
-            from market.fetcher import fetch_market_data
-            from ai.analyst import generate_market_summary
-            from storage.database import save_market_snapshot
-
-            logger.info("Step 7: Fetching market indices...")
-            indices = fetch_market_data()
-            if indices:
-                summary = generate_market_summary(indices)
-                save_market_snapshot(date_str, indices, summary)
-                logger.info("Market snapshot saved (%d indices)", len(indices))
-        except Exception as exc:
-            logger.warning("Market data step failed (non-fatal): %s", exc)
-
-        # 8. Open dashboard in browser (local only — skipped on headless servers)
+        # 7. Open dashboard in browser (local only — skipped on headless servers)
         if os.environ.get("DISPLAY") or os.name == "nt" or __import__("sys").platform == "darwin":
             _open_browser_delayed()
 
