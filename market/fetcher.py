@@ -17,7 +17,7 @@ _INDICES = [
 
 def fetch_market_data() -> list[dict]:
     """
-    Fetch previous-day close for all 7 indices via yfinance.
+    Fetch previous-day close for all 7 indices via yfinance (single bulk download).
     Returns a list of dicts with symbol, name, flag, value, change, pct_change, currency.
     Silently returns empty list on any failure.
     """
@@ -27,22 +27,43 @@ def fetch_market_data() -> list[dict]:
         logger.warning("yfinance not installed — skipping market data fetch")
         return []
 
+    symbols = [m["symbol"] for m in _INDICES]
+    meta_by_symbol = {m["symbol"]: m for m in _INDICES}
+
+    try:
+        data = yf.download(
+            " ".join(symbols),
+            period="5d",
+            group_by="ticker",
+            auto_adjust=True,
+            progress=False,
+            threads=False,
+        )
+    except Exception as exc:
+        logger.warning("Bulk market download failed: %s", exc)
+        return []
+
     results = []
-    for meta in _INDICES:
+    for symbol in symbols:
         try:
-            ticker = yf.Ticker(meta["symbol"])
-            hist = ticker.history(period="5d")
-            if hist.empty or len(hist) < 2:
-                logger.warning("Insufficient history for %s", meta["symbol"])
+            if len(symbols) == 1:
+                hist = data["Close"]
+            else:
+                hist = data[symbol]["Close"]
+
+            hist = hist.dropna()
+            if len(hist) < 2:
+                logger.warning("Insufficient history for %s", symbol)
                 continue
 
-            prev_close = float(hist["Close"].iloc[-2])
-            latest = float(hist["Close"].iloc[-1])
+            prev_close = float(hist.iloc[-2])
+            latest = float(hist.iloc[-1])
             change = round(latest - prev_close, 2)
             pct_change = round((change / prev_close) * 100, 2) if prev_close else 0.0
+            meta = meta_by_symbol[symbol]
 
             results.append({
-                "symbol":     meta["symbol"],
+                "symbol":     symbol,
                 "name":       meta["name"],
                 "flag":       meta["flag"],
                 "value":      round(latest, 2),
@@ -51,7 +72,7 @@ def fetch_market_data() -> list[dict]:
                 "currency":   meta["currency"],
             })
         except Exception as exc:
-            logger.warning("Failed to fetch %s: %s", meta["symbol"], exc)
+            logger.warning("Failed to parse %s: %s", symbol, exc)
 
     logger.info("Fetched market data for %d/%d indices", len(results), len(_INDICES))
     return results
