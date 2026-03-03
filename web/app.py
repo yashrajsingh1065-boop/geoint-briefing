@@ -138,4 +138,15 @@ def create_app() -> FastAPI:
         t.start()
         return JSONResponse({"status": "started"})
 
+    # ── API: market snapshot debug ─────────────────────────────────────────────
+
+    @app.get("/api/market")
+    async def market_snapshot():
+        from storage.database import get_market_snapshot
+        today = date.today().isoformat()
+        market = get_market_snapshot(today)
+        if not market:
+            return JSONResponse({"date": today, "snapshot": None})
+        return JSONResponse({"date": today, "snapshot": market})
+
     return app
