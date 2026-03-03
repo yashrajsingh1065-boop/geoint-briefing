@@ -37,6 +37,7 @@
     a:hover { text-decoration: underline; }
 
     .container { max-width: 860px; margin: 0 auto; padding: 0 1.25rem; }
+    .container.wide { max-width: 1180px; }
 
     /* ── Nav ── */
     .site-nav {
@@ -245,6 +246,99 @@
     td { padding: 0.65rem 0.75rem; border-bottom: 1px solid var(--border); vertical-align: top; }
     tr:last-child td { border-bottom: none; }
 
+    /* ── Dashboard layout ── */
+    .dash-layout {
+      display: grid;
+      grid-template-columns: 1fr 300px;
+      gap: 1.5rem;
+      align-items: start;
+    }
+
+    /* ── Market sidebar ── */
+    .market-sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      position: sticky;
+      top: 1rem;
+    }
+
+    .mkt-tile {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+    }
+
+    .mkt-name {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-bottom: 0.25rem;
+    }
+
+    .mkt-val {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 0.15rem;
+    }
+
+    .mkt-chg {
+      font-size: 0.75rem;
+      font-weight: 600;
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 4px;
+    }
+    .mkt-chg.up   { background: rgba(34,197,94,0.12);  color: #22c55e; border: 1px solid rgba(34,197,94,0.25); }
+    .mkt-chg.down { background: rgba(239,68,68,0.12); color: #ef4444; border: 1px solid rgba(239,68,68,0.25); }
+
+    .mkt-summary {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      margin-bottom: 0.2rem;
+    }
+    .mkt-summary > summary {
+      cursor: pointer;
+      list-style: none;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--accent);
+      user-select: none;
+    }
+    .mkt-summary > summary::-webkit-details-marker { display: none; }
+    .mkt-summary > summary:hover { opacity: 0.85; }
+    .mkt-summary p {
+      margin-top: 0.65rem;
+      font-size: 0.82rem;
+      line-height: 1.65;
+      color: var(--text);
+    }
+
+    .mkt-header {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 0 0.25rem;
+    }
+
+    @media (max-width: 900px) {
+      .dash-layout {
+        grid-template-columns: 1fr;
+      }
+      .market-sidebar {
+        position: static;
+        order: 2;
+      }
+      .events-col {
+        order: 1;
+      }
+    }
+
     /* ── Footer ── */
     .site-footer {
       border-top: 1px solid var(--border);
@@ -266,7 +360,7 @@
     </div>
   </nav>
 
-  <div class="container">
+  <div class="container {% block container_class %}{% endblock %}">
     {% block content %}{% endblock %}
   </div>
 

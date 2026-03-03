@@ -94,6 +94,21 @@ def run_daily_pipeline() -> None:
         db.mark_briefing_complete(briefing_id)
         logger.info("=== Briefing complete: %d events saved ===", len(analyses))
 
+        # 7. Fetch market data and generate summary
+        try:
+            from market.fetcher import fetch_market_data
+            from ai.analyst import generate_market_summary
+            from storage.database import save_market_snapshot
+
+            logger.info("Step 7: Fetching market indices...")
+            indices = fetch_market_data()
+            if indices:
+                summary = generate_market_summary(indices)
+                save_market_snapshot(date_str, indices, summary)
+                logger.info("Market snapshot saved (%d indices)", len(indices))
+        except Exception as exc:
+            logger.warning("Market data step failed (non-fatal): %s", exc)
+
         # 8. Open dashboard in browser (local only — skipped on headless servers)
         if os.environ.get("DISPLAY") or os.name == "nt" or __import__("sys").platform == "darwin":
             _open_browser_delayed()

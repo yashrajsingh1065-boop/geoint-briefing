@@ -142,6 +142,35 @@ def analyze_event(cluster: dict) -> dict:
         return _fallback_result(cluster)
 
 
+def generate_market_summary(indices: list[dict]) -> str:
+    """
+    Generate a 3-4 sentence market commentary for the given index data.
+    Returns empty string on any failure.
+    """
+    try:
+        lines = []
+        for idx in indices:
+            sign = "+" if idx["change"] >= 0 else ""
+            lines.append(
+                f"{idx['name']} ({idx['symbol']}): {idx['value']:,.2f} "
+                f"{sign}{idx['change']} ({sign}{idx['pct_change']}%)"
+            )
+        index_text = "\n".join(lines)
+
+        client = _get_client()
+        response = client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=300,
+            temperature=0.4,
+            system="You are a financial analyst. Write a 3-4 sentence market commentary on the following index data. Be concise and factual.",
+            messages=[{"role": "user", "content": index_text}],
+        )
+        return response.content[0].text.strip()
+    except Exception as exc:
+        logger.warning("Market summary generation failed: %s", exc)
+        return ""
+
+
 def analyze_all_events(clusters: list[dict]) -> list[dict]:
     """
     Analyze all event clusters sequentially.

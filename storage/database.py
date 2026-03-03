@@ -58,6 +58,14 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_events_briefing ON events(briefing_id);
             CREATE INDEX IF NOT EXISTS idx_articles_briefing ON articles(briefing_id);
             CREATE INDEX IF NOT EXISTS idx_articles_event ON articles(event_id);
+
+            CREATE TABLE IF NOT EXISTS market_snapshots (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                date         TEXT NOT NULL UNIQUE,
+                indices_json TEXT NOT NULL,
+                summary      TEXT,
+                created_at   TEXT NOT NULL
+            );
         """)
     logger.info("Database initialized at %s", DB_PATH)
 
@@ -211,6 +219,30 @@ def get_event_with_articles(event_id: int) -> dict | None:
         ).fetchall()
         event["articles"] = [dict(a) for a in articles]
     return event
+
+
+def save_market_snapshot(date_str: str, indices: list[dict], summary: str) -> None:
+    """Insert or replace a market snapshot for the given date."""
+    with _connect() as conn:
+        conn.execute(
+            """INSERT OR REPLACE INTO market_snapshots
+               (date, indices_json, summary, created_at)
+               VALUES (?, ?, ?, ?)""",
+            (date_str, json.dumps(indices), summary, _now()),
+        )
+
+
+def get_market_snapshot(date_str: str) -> dict | None:
+    """Return market snapshot dict with parsed indices, or None."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM market_snapshots WHERE date = ?", (date_str,)
+        ).fetchone()
+    if not row:
+        return None
+    result = dict(row)
+    result["indices"] = json.loads(result.get("indices_json") or "[]")
+    return result
 
 
 def list_briefing_dates() -> list[dict]:

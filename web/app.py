@@ -26,14 +26,15 @@ def create_app() -> FastAPI:
 
     @app.get("/briefing/today", response_class=HTMLResponse)
     async def today_briefing(request: Request):
-        from storage.database import get_briefing_by_date, get_events_for_briefing
+        from storage.database import get_briefing_by_date, get_events_for_briefing, get_market_snapshot
         today = date.today().isoformat()
         briefing = get_briefing_by_date(today)
+        market = get_market_snapshot(today)
 
         if briefing is None:
             return templates.TemplateResponse(
                 "dashboard.html",
-                {"request": request, "briefing": None, "events": [], "date": today, "status": "none"},
+                {"request": request, "briefing": None, "events": [], "date": today, "status": "none", "market": market},
             )
 
         events = []
@@ -48,6 +49,7 @@ def create_app() -> FastAPI:
                 "events":   events,
                 "date":     today,
                 "status":   briefing["status"],
+                "market":   market,
             },
         )
 
@@ -55,13 +57,14 @@ def create_app() -> FastAPI:
 
     @app.get("/briefing/{date_str}", response_class=HTMLResponse)
     async def briefing_by_date(request: Request, date_str: str):
-        from storage.database import get_briefing_by_date, get_events_for_briefing
+        from storage.database import get_briefing_by_date, get_events_for_briefing, get_market_snapshot
         briefing = get_briefing_by_date(date_str)
+        market = get_market_snapshot(date_str)
 
         if briefing is None:
             return templates.TemplateResponse(
                 "dashboard.html",
-                {"request": request, "briefing": None, "events": [], "date": date_str, "status": "none"},
+                {"request": request, "briefing": None, "events": [], "date": date_str, "status": "none", "market": market},
             )
 
         events = []
@@ -76,6 +79,7 @@ def create_app() -> FastAPI:
                 "events":   events,
                 "date":     date_str,
                 "status":   briefing["status"],
+                "market":   market,
             },
         )
 

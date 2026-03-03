@@ -1,7 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Briefing — {{ date }}{% endblock %}
+{% block container_class %}wide{% endblock %}
 
 {% block content %}
+
+<div class="dash-layout">
+<div class="events-col">
 
 {% if status == "none" %}
 <div class="state-box">
@@ -116,6 +120,41 @@
 {% endfor %}
 
 {% endif %}
+
+</div>{# end .events-col #}
+
+{% if market and market.indices %}
+<aside class="market-sidebar">
+  <span class="mkt-header">Markets</span>
+
+  {% if market.summary %}
+  <details class="mkt-summary">
+    <summary>&#9658; Market Commentary</summary>
+    <p>{{ market.summary }}</p>
+  </details>
+  {% endif %}
+
+  {% for idx in market.indices %}
+  <div class="mkt-tile">
+    <div class="mkt-name">{{ idx.flag }} {{ idx.name }}</div>
+    <div class="mkt-val">
+      {%- if idx.value >= 10000 -%}
+        {{ "{:,.0f}".format(idx.value) }}
+      {%- elif idx.value >= 1000 -%}
+        {{ "{:,.1f}".format(idx.value) }}
+      {%- else -%}
+        {{ "{:,.2f}".format(idx.value) }}
+      {%- endif -%}
+    </div>
+    <div class="mkt-chg {{ 'up' if idx.change >= 0 else 'down' }}">
+      {{ '+' if idx.change >= 0 }}{{ "{:,.2f}".format(idx.change) }} ({{ '+' if idx.pct_change >= 0 }}{{ idx.pct_change }}%)
+    </div>
+  </div>
+  {% endfor %}
+</aside>
+{% endif %}
+
+</div>{# end .dash-layout #}
 
 {% endblock %}
 
