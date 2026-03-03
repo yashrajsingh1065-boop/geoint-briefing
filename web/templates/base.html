@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Geoint Briefing{% endblock %}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #0d0f14;
+      --surface:     #13161f;
+      --surface2:    #1c2030;
+      --border:      #252a38;
+      --text:        #e2e6f0;
+      --muted:       #7a8099;
+      --accent:      #4f8ef7;
+
+      --u5: #ef4444;
+      --u4: #f97316;
+      --u3: #eab308;
+      --u2: #22c55e;
+      --u1: #6b7280;
+    }
+
+    html { font-size: 16px; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .container { max-width: 860px; margin: 0 auto; padding: 0 1.25rem; }
+
+    /* ── Nav ── */
+    .site-nav {
+      border-bottom: 1px solid var(--border);
+      padding: 0.9rem 0;
+      margin-bottom: 2rem;
+    }
+    .site-nav .inner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .site-nav .brand {
+      font-size: 0.95rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .site-nav .brand::before {
+      content: "";
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+    .site-nav .nav-links { display: flex; gap: 1.5rem; }
+    .site-nav .nav-links a {
+      font-size: 0.85rem;
+      color: var(--muted);
+      transition: color 0.15s;
+    }
+    .site-nav .nav-links a:hover { color: var(--text); text-decoration: none; }
+
+    /* ── Urgency badge ── */
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+    }
+    .b5 { background: rgba(239,68,68,0.15);  color: var(--u5); border: 1px solid rgba(239,68,68,0.3); }
+    .b4 { background: rgba(249,115,22,0.15); color: var(--u4); border: 1px solid rgba(249,115,22,0.3); }
+    .b3 { background: rgba(234,179,8,0.15);  color: var(--u3); border: 1px solid rgba(234,179,8,0.3); }
+    .b2 { background: rgba(34,197,94,0.15);  color: var(--u2); border: 1px solid rgba(34,197,94,0.3); }
+    .b1 { background: rgba(107,114,128,0.15);color: var(--u1); border: 1px solid rgba(107,114,128,0.3); }
+
+    /* ── Region tag ── */
+    .tag {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 0.68rem;
+      background: var(--surface2);
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
+
+    /* ── Event card ── */
+    .event-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem 1.4rem;
+      margin-bottom: 1rem;
+      transition: border-color 0.15s;
+    }
+    .event-card:hover { border-color: var(--surface2); }
+    .event-card.u5 { border-left-color: var(--u5); }
+    .event-card.u4 { border-left-color: var(--u4); }
+    .event-card.u3 { border-left-color: var(--u3); }
+    .event-card.u2 { border-left-color: var(--u2); }
+    .event-card.u1 { border-left-color: var(--u1); }
+
+    .card-meta {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.4rem;
+      margin-bottom: 0.8rem;
+    }
+
+    .card-title {
+      font-size: 1.08rem;
+      font-weight: 600;
+      line-height: 1.45;
+      color: var(--text);
+      margin-bottom: 0.65rem;
+    }
+    .card-title a { color: inherit; }
+    .card-title a:hover { color: var(--accent); text-decoration: none; }
+
+    .card-sources {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+    }
+    .card-sources span { color: var(--text); }
+
+    /* ── Expandable analysis ── */
+    details.analysis { margin-top: 0.5rem; }
+    details.analysis > summary {
+      cursor: pointer;
+      list-style: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--accent);
+      padding: 4px 10px;
+      border: 1px solid rgba(79,142,247,0.25);
+      border-radius: 4px;
+      background: rgba(79,142,247,0.06);
+      transition: background 0.15s;
+      user-select: none;
+    }
+    details.analysis > summary::-webkit-details-marker { display: none; }
+    details.analysis > summary:hover { background: rgba(79,142,247,0.12); }
+    details.analysis > summary .arrow { font-size: 0.6rem; transition: transform 0.2s; }
+    details.analysis[open] > summary .arrow { transform: rotate(90deg); }
+
+    .analysis-body {
+      margin-top: 0.9rem;
+      padding: 1rem 1.1rem;
+      background: var(--surface2);
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      font-size: 0.875rem;
+      line-height: 1.7;
+    }
+    .analysis-body h4 {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.4rem;
+    }
+    .analysis-body section + section { margin-top: 1rem; }
+
+    /* ── Loading / empty states ── */
+    .state-box {
+      text-align: center;
+      padding: 5rem 1rem;
+      color: var(--muted);
+    }
+    .state-box h2 { color: var(--text); font-size: 1.3rem; margin-bottom: 0.6rem; }
+    .state-box p { margin-bottom: 1.2rem; }
+    .state-box progress { width: 200px; }
+
+    /* ── Button ── */
+    .btn {
+      display: inline-block;
+      padding: 0.5rem 1.2rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid var(--accent);
+      background: rgba(79,142,247,0.1);
+      color: var(--accent);
+      transition: background 0.15s;
+    }
+    .btn:hover { background: rgba(79,142,247,0.2); text-decoration: none; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── Region bar ── */
+    .region-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-bottom: 1.5rem;
+    }
+    .region-bar .rb {
+      font-size: 0.72rem;
+      padding: 3px 9px;
+      border-radius: 4px;
+      background: var(--surface2);
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
+
+    /* ── Page header ── */
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 0.4rem;
+    }
+    .page-header h1 { font-size: 1.4rem; font-weight: 700; color: var(--text); }
+    .page-meta { font-size: 0.8rem; color: var(--muted); }
+
+    /* ── Table ── */
+    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    th { text-align: left; padding: 0.5rem 0.75rem; color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid var(--border); }
+    td { padding: 0.65rem 0.75rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+
+    /* ── Footer ── */
+    .site-footer {
+      border-top: 1px solid var(--border);
+      padding: 1.25rem 0;
+      margin-top: 3rem;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <nav class="site-nav">
+    <div class="container inner">
+      <span class="brand">Geoint Briefing</span>
+      <div class="nav-links">
+        <a href="/briefing/today">Today</a>
+        <a href="/history">Archive</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container">
+    {% block content %}{% endblock %}
+  </div>
+
+  <footer class="site-footer">
+    <div class="container">
+      Powered by Claude claude-sonnet-4-6 &mdash; personal use only
+    </div>
+  </footer>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

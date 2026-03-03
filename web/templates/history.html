@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Archive{% endblock %}
+
+{% block content %}
+
+<div class="page-header" style="margin-bottom:1.5rem;">
+  <h1>Briefing Archive</h1>
+</div>
+
+{% if not entries %}
+  <p style="color:var(--muted);">No past briefings found.</p>
+{% else %}
+<div style="background:var(--surface); border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Status</th>
+        <th>Events</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for entry in entries %}
+      <tr>
+        <td>{{ entry.date }}</td>
+        <td>
+          {% if entry.status == "complete" %}
+            <span style="color:var(--u2); font-size:0.8rem;">Complete</span>
+          {% elif entry.status == "pending" %}
+            <span style="color:var(--muted); font-size:0.8rem;">Pending</span>
+          {% else %}
+            <span style="color:var(--u5); font-size:0.8rem;">Error</span>
+          {% endif %}
+        </td>
+        <td style="color:var(--muted);">{{ entry.event_count }}</td>
+        <td>
+          {% if entry.status == "complete" %}
+            <a href="/briefing/{{ entry.date }}" style="font-size:0.82rem;">View</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}

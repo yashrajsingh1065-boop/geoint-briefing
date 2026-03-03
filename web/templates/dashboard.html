@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}Briefing — {{ date }}{% endblock %}
+
+{% block content %}
+
+{% if status == "none" %}
+<div class="state-box">
+  <h2>No briefing for {{ date }}</h2>
+  <p>The pipeline has not run yet today.</p>
+  <button class="btn" id="triggerBtn" onclick="triggerPipeline()">Run briefing now</button>
+</div>
+
+{% elif status == "pending" %}
+<div class="state-box">
+  <h2>Generating your briefing&hellip;</h2>
+  <p>Scraping feeds, clustering events, and analysing with Claude AI.<br>
+     Usually takes 3&ndash;5 minutes. Page refreshes automatically.</p>
+  <progress></progress>
+  <p style="margin-top:1rem;font-size:0.8rem;">
+    <a href="javascript:location.reload()">Refresh manually</a>
+  </p>
+</div>
+
+{% elif status == "error" %}
+<div class="state-box">
+  <h2>Pipeline error</h2>
+  <p>Something went wrong. Check the terminal for logs.</p>
+  <button class="btn" onclick="triggerPipeline()">Retry</button>
+</div>
+
+{% else %}
+
+<div class="page-header">
+  <h1>Morning Briefing</h1>
+  <span class="page-meta">{{ date }} &mdash; {{ events|length }} events</span>
+</div>
+
+{# Regional breakdown #}
+{% if events %}
+  {% set rc = {} %}
+  {% for e in events %}{% for r in e.regions %}{% if r in rc %}{% set _ = rc.update({r: rc[r]+1}) %}{% else %}{% set _ = rc.update({r: 1}) %}{% endif %}{% endfor %}{% endfor %}
+  {% if rc %}
+  <div class="region-bar" style="margin-top:0.75rem;">
+    {% for region, count in rc.items()|sort(attribute='1',reverse=true) %}
+      <span class="rb">{{ region }} {{ count }}</span>
+    {% endfor %}
+  </div>
+  {% endif %}
+{% endif %}
+
+{# Divider #}
+<div style="border-top:1px solid var(--border); margin-bottom:1.5rem;"></div>
+
+{% if not events %}
+  <p style="color:var(--muted);">No events in this briefing.</p>
+{% endif %}
+
+{% for event in events %}
+{% set u = event.urgency %}
+<div class="event-card u{{ u }}">
+
+  {# Meta row: badge + regions #}
+  <div class="card-meta">
+    {% if u == 5 %}<span class="badge b5">Crisis</span>
+    {% elif u == 4 %}<span class="badge b4">High</span>
+    {% elif u == 3 %}<span class="badge b3">Significant</span>
+    {% elif u == 2 %}<span class="badge b2">Moderate</span>
+    {% else %}<span class="badge b1">Routine</span>
+    {% endif %}
+    {% for region in event.regions %}<span class="tag">{{ region }}</span>{% endfor %}
+  </div>
+
+  {# Title #}
+  <div class="card-title">
+    <a href="/event/{{ event.id }}">{{ event.title }}</a>
+  </div>
+
+  {# Sources #}
+  {% if event.sources %}
+  <div class="card-sources">
+    <span>{{ event.sources | join(" &middot; ") }}</span>
+    {% if event.article_count > event.sources|length %}
+      &nbsp;+{{ event.article_count - event.sources|length }} more
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {# Expandable analysis #}
+  {% if event.summary %}
+  <details class="analysis">
+    <summary><span class="arrow">&#9658;</span> Read analysis</summary>
+    <div class="analysis-body">
+      {% if event.summary %}
+      <section>
+        <h4>What happened</h4>
+        <p>{{ event.summary }}</p>
+      </section>
+      {% endif %}
+      {% if event.consequence %}
+      <section>
+        <h4>Strategic consequences</h4>
+        <p>{{ event.consequence }}</p>
+      </section>
+      {% endif %}
+      {% if event.historical_context %}
+      <section>
+        <h4>Historical context</h4>
+        <p>{{ event.historical_context }}</p>
+      </section>
+      {% endif %}
+    </div>
+  </details>
+  {% endif %}
+
+</div>
+{% endfor %}
+
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+{% if status in ("pending", "none") %}
+setInterval(function() {
+  fetch('/api/status').then(r => r.json()).then(d => {
+    if (d.status === 'complete') location.reload();
+  }).catch(() => {});
+}, 15000);
+{% endif %}
+
+function triggerPipeline() {
+  var btn = document.getElementById('triggerBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Starting…'; }
+  fetch('/api/trigger', {method:'POST'})
+    .then(function() { setTimeout(function(){ location.reload(); }, 2000); })
+    .catch(function() { location.reload(); });
+}
+</script>
+{% endblock %}

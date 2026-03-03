@@ -1,0 +1,65 @@
+import logging
+import os
+import threading
+from datetime import date
+
+import uvicorn
+from apscheduler.schedulers.background import BackgroundScheduler
+from tzlocal import get_localzone
+
+from config import SCHEDULE_HOUR, SCHEDULE_MINUTE
+from storage.database import init_db, get_briefing_by_date
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
+    datefmt="%H:%M:%S",
+)
+logger = logging.getLogger(__name__)
+
+
+def _start_pipeline_in_background() -> None:
+    from scheduler.jobs import run_daily_pipeline
+    t = threading.Thread(target=run_daily_pipeline, daemon=True, name="pipeline")
+    t.start()
+
+
+def main() -> None:
+    # 1. Initialize database
+    init_db()
+
+    # 2. Register daily cron job
+    scheduler = BackgroundScheduler(timezone=get_localzone())
+    scheduler.add_job(
+        _start_pipeline_in_background,
+        trigger="cron",
+        hour=SCHEDULE_HOUR,
+        minute=SCHEDULE_MINUTE,
+        id="daily_briefing",
+        replace_existing=True,
+    )
+    scheduler.start()
+    logger.info(
+        "Scheduler started — daily briefing will run at %02d:%02d local time",
+        SCHEDULE_HOUR, SCHEDULE_MINUTE,
+    )
+
+    # 3. Run pipeline immediately if no briefing for today
+    today = date.today().isoformat()
+    existing = get_briefing_by_date(today)
+    if existing is None or existing["status"] in ("pending", "error"):
+        logger.info("No complete briefing for today — running pipeline now...")
+        _start_pipeline_in_background()
+    else:
+        logger.info("Briefing for %s already exists (status: %s)", today, existing["status"])
+
+    # 4. Start FastAPI server (blocks until Ctrl-C)
+    from web.app import create_app
+    app = create_app()
+    port = int(os.environ.get("PORT", 8000))
+    logger.info("Dashboard → http://0.0.0.0:%d", port)
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="warning")
+
+
+if __name__ == "__main__":
+    main()

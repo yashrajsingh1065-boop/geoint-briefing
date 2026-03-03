@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}{{ event.title }}{% endblock %}
+
+{% block content %}
+
+<p style="margin-bottom:1.25rem;">
+  <a href="javascript:history.back()" style="font-size:0.85rem; color:var(--muted);">&larr; Back to briefing</a>
+</p>
+
+<div class="card-meta" style="margin-bottom:0.75rem;">
+  {% set u = event.urgency %}
+  {% if u == 5 %}<span class="badge b5">Crisis</span>
+  {% elif u == 4 %}<span class="badge b4">High</span>
+  {% elif u == 3 %}<span class="badge b3">Significant</span>
+  {% elif u == 2 %}<span class="badge b2">Moderate</span>
+  {% else %}<span class="badge b1">Routine</span>
+  {% endif %}
+  {% for region in event.regions %}<span class="tag">{{ region }}</span>{% endfor %}
+</div>
+
+<h1 style="font-size:1.4rem; font-weight:700; line-height:1.4; margin-bottom:1rem; color:var(--text);">
+  {{ event.title }}
+</h1>
+
+{% if event.actors %}
+<p style="font-size:0.8rem; color:var(--muted); margin-bottom:1.5rem;">
+  <strong style="color:var(--text);">Key actors:</strong> {{ event.actors | join(", ") }}
+</p>
+{% endif %}
+
+<div class="analysis-body" style="margin-bottom:1.5rem;">
+  {% if event.summary %}
+  <section>
+    <h4>What happened</h4>
+    <p>{{ event.summary }}</p>
+  </section>
+  {% endif %}
+  {% if event.consequence %}
+  <section>
+    <h4>Strategic consequences</h4>
+    <p>{{ event.consequence }}</p>
+  </section>
+  {% endif %}
+  {% if event.historical_context %}
+  <section>
+    <h4>Historical context</h4>
+    <p>{{ event.historical_context }}</p>
+  </section>
+  {% endif %}
+</div>
+
+{% if event.articles %}
+<h3 style="font-size:0.85rem; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:var(--muted); margin-bottom:0.75rem;">
+  Source Articles ({{ event.articles|length }})
+</h3>
+<div style="background:var(--surface); border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+  <table>
+    <thead>
+      <tr>
+        <th>Source</th>
+        <th>Headline</th>
+        <th>Date</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for article in event.articles %}
+      <tr>
+        <td style="white-space:nowrap; color:var(--muted); font-size:0.78rem;">{{ article.source_name }}</td>
+        <td><a href="{{ article.url }}" target="_blank" rel="noopener" style="font-size:0.85rem;">{{ article.title }}</a></td>
+        <td style="white-space:nowrap; font-size:0.78rem; color:var(--muted);">
+          {% if article.published_at %}{{ article.published_at[:10] }}{% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}
