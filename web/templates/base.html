@@ -317,6 +317,25 @@
       color: var(--text);
     }
 
+    .mkt-tile-detail {
+      margin-top: 0.5rem;
+    }
+    .mkt-tile-detail > summary {
+      cursor: pointer;
+      list-style: none;
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--accent);
+      user-select: none;
+    }
+    .mkt-tile-detail > summary::-webkit-details-marker { display: none; }
+    .mkt-tile-detail p {
+      margin-top: 0.4rem;
+      font-size: 0.75rem;
+      line-height: 1.5;
+      color: var(--muted);
+    }
+
     .mkt-header {
       font-size: 0.7rem;
       font-weight: 700;

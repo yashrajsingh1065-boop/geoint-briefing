@@ -142,10 +142,10 @@ def analyze_event(cluster: dict) -> dict:
         return _fallback_result(cluster)
 
 
-def generate_market_summary(indices: list[dict]) -> str:
+def generate_market_summary(indices: list[dict]) -> tuple[str, dict]:
     """
-    Generate a 3-4 sentence market commentary for the given index data.
-    Returns empty string on any failure.
+    Generate an overall market commentary and one-sentence commentary per index.
+    Returns (overall_summary, {symbol: commentary}) — empty strings on failure.
     """
     try:
         lines = []
@@ -160,15 +160,25 @@ def generate_market_summary(indices: list[dict]) -> str:
         client = _get_client()
         response = client.messages.create(
             model=CLAUDE_MODEL,
-            max_tokens=300,
+            max_tokens=800,
             temperature=0.4,
-            system="You are a financial analyst. Write a 3-4 sentence market commentary on the following index data. Be concise and factual.",
+            system=(
+                "You are a financial analyst. Given index data, return a JSON object with two keys:\n"
+                "1. \"overall\": a 3-4 sentence market commentary covering the global picture.\n"
+                "2. \"per_index\": an object mapping each symbol to a single concise sentence "
+                "explaining the key driver behind that index's move today.\n"
+                "Return only valid JSON, no markdown fences."
+            ),
             messages=[{"role": "user", "content": index_text}],
         )
-        return response.content[0].text.strip()
+        import json as _json
+        data = _json.loads(response.content[0].text.strip())
+        overall = data.get("overall", "")
+        per_index = data.get("per_index", {})
+        return overall, per_index
     except Exception as exc:
         logger.warning("Market summary generation failed: %s", exc)
-        return ""
+        return "", {}
 
 
 def analyze_all_events(clusters: list[dict]) -> list[dict]:

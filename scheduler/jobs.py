@@ -19,8 +19,10 @@ def _fetch_market_data(date_str: str) -> None:
         logger.info("Fetching market indices...")
         indices = fetch_market_data()
         if indices:
-            summary = generate_market_summary(indices)
-            save_market_snapshot(date_str, indices, summary)
+            overall, per_index = generate_market_summary(indices)
+            for idx in indices:
+                idx["commentary"] = per_index.get(idx["symbol"], "")
+            save_market_snapshot(date_str, indices, overall)
             logger.info("Market snapshot saved (%d indices)", len(indices))
     except Exception as exc:
         logger.warning("Market data fetch failed (non-fatal): %s", exc)

@@ -149,6 +149,12 @@
     <div class="mkt-chg {{ 'up' if idx.change >= 0 else 'down' }}">
       {{ '+' if idx.change >= 0 }}{{ "{:,.2f}".format(idx.change) }} ({{ '+' if idx.pct_change >= 0 }}{{ idx.pct_change }}%)
     </div>
+    {% if idx.commentary %}
+    <details class="mkt-tile-detail">
+      <summary>&#9658; Why</summary>
+      <p>{{ idx.commentary }}</p>
+    </details>
+    {% endif %}
   </div>
   {% endfor %}
 </aside>
