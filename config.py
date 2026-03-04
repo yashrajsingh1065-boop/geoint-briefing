@@ -17,7 +17,7 @@ CLAUDE_TEMPERATURE = 0.3
 
 # ── Scheduler ──────────────────────────────────────────────────────────────────
 SCHEDULE_HOUR   = 6
-SCHEDULE_MINUTE = 0
+SCHEDULE_MINUTE = 30
 
 # ── Processing thresholds ──────────────────────────────────────────────────────
 DEDUP_SIMILARITY_THRESHOLD = 0.72   # lower = more aggressive dedup
