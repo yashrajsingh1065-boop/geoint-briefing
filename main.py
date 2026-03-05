@@ -3,11 +3,11 @@ import os
 import threading
 from datetime import date
 
+from zoneinfo import ZoneInfo
 import uvicorn
 from apscheduler.schedulers.background import BackgroundScheduler
-from tzlocal import get_localzone
 
-from config import SCHEDULE_HOUR, SCHEDULE_MINUTE
+from config import SCHEDULE_HOUR, SCHEDULE_MINUTE, SCHEDULE_TIMEZONE
 from storage.database import init_db, get_briefing_by_date
 
 logging.basicConfig(
@@ -29,7 +29,8 @@ def main() -> None:
     init_db()
 
     # 2. Register daily cron job
-    scheduler = BackgroundScheduler(timezone=get_localzone())
+    tz = ZoneInfo(SCHEDULE_TIMEZONE)
+    scheduler = BackgroundScheduler(timezone=tz)
     scheduler.add_job(
         _start_pipeline_in_background,
         trigger="cron",

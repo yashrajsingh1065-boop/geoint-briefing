@@ -16,12 +16,13 @@ CLAUDE_MAX_TOKENS  = 1500
 CLAUDE_TEMPERATURE = 0.3
 
 # ── Scheduler ──────────────────────────────────────────────────────────────────
-SCHEDULE_HOUR   = 6
-SCHEDULE_MINUTE = 30
+SCHEDULE_HOUR     = 6
+SCHEDULE_MINUTE   = 30
+SCHEDULE_TIMEZONE = os.environ.get("SCHEDULE_TIMEZONE", "Asia/Kolkata")
 
 # ── Processing thresholds ──────────────────────────────────────────────────────
-DEDUP_SIMILARITY_THRESHOLD = 0.72   # lower = more aggressive dedup
-CLUSTER_DISTANCE_THRESHOLD = 0.60   # higher = merge more related stories into one event
+DEDUP_SIMILARITY_THRESHOLD = 0.55   # lower = more aggressive dedup
+CLUSTER_DISTANCE_THRESHOLD = 0.70   # higher = merge more related stories into one event
 MIN_ARTICLE_BODY_CHARS     = 150
 MAX_ARTICLES_PER_FEED      = 30
 MAX_CLUSTERS_PER_BRIEFING  = 20
