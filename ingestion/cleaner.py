@@ -4,6 +4,12 @@ from html.parser import HTMLParser
 
 import bleach
 
+try:
+    import trafilatura
+    _HAS_TRAFILATURA = True
+except ImportError:
+    _HAS_TRAFILATURA = False
+
 from config import MIN_ARTICLE_BODY_CHARS
 
 logger = logging.getLogger(__name__)
@@ -37,9 +43,24 @@ class _HTMLStripper(HTMLParser):
 
 
 def strip_html(text: str) -> str:
-    """Strip HTML tags and dangerous content, returning plain text."""
+    """Strip HTML tags and dangerous content, returning plain text.
+
+    Uses trafilatura for semantic article extraction when available,
+    falling back to the bleach + HTMLParser triple-pass approach.
+    """
     if not text:
         return ""
+
+    # Primary: trafilatura extracts main article text from HTML
+    if _HAS_TRAFILATURA:
+        try:
+            extracted = trafilatura.extract(text, include_comments=False, favor_precision=True)
+            if extracted and len(extracted) >= MIN_ARTICLE_BODY_CHARS:
+                return extracted
+        except Exception:
+            pass  # fall through to legacy approach
+
+    # Fallback: triple-pass cleaning
     try:
         # First pass: remove dangerous tags AND their content via regex
         for tag in ("script", "style", "noscript", "iframe", "object", "embed"):
@@ -51,7 +72,7 @@ def strip_html(text: str) -> str:
         stripper.feed(cleaned)
         return stripper.get_text()
     except Exception:
-        # Fallback: crude tag removal via regex
+        # Last resort: crude tag removal via regex
         for tag in ("script", "style", "noscript", "iframe"):
             text = re.sub(rf"<{tag}[^>]*>.*?</{tag}>", " ", text, flags=re.DOTALL | re.IGNORECASE)
         return re.sub(r"<[^>]+>", " ", text)

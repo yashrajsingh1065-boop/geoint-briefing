@@ -15,11 +15,38 @@ import numpy as np
 
 from config import (
     STORY_MATCH_SIMILARITY_THRESHOLD,
+    STORY_SEMANTIC_THRESHOLD,
     STORY_DORMANT_DAYS,
     MIN_ARTICLES_FOR_STORY,
 )
+from processing.embeddings import is_available as embeddings_available, encode, cosine_sim_query
 
 logger = logging.getLogger(__name__)
+
+
+def _find_candidates(event_text: str, stories: list[dict]) -> list[dict]:
+    """Find candidate story matches using semantic embeddings, falling back to TF-IDF."""
+    if not stories:
+        return []
+
+    story_texts = [s["title"] + " " + (s["narrative"] or "")[:500] for s in stories]
+
+    # Try semantic embeddings first
+    if embeddings_available():
+        try:
+            all_embs = encode([event_text] + story_texts)
+            sims = cosine_sim_query(all_embs[0], all_embs[1:])
+            candidates = []
+            for i, sim in enumerate(sims):
+                if sim >= STORY_SEMANTIC_THRESHOLD:
+                    candidates.append({**stories[i], "_similarity": float(sim)})
+            candidates.sort(key=lambda x: x["_similarity"], reverse=True)
+            return candidates[:5]
+        except Exception as exc:
+            logger.warning("Semantic candidate matching failed (%s); falling back to TF-IDF", type(exc).__name__)
+
+    # Fallback: TF-IDF
+    return _tfidf_candidates(event_text, stories, STORY_MATCH_SIMILARITY_THRESHOLD)
 
 
 def _tfidf_candidates(event_text: str, stories: list[dict], threshold: float) -> list[dict]:
@@ -89,7 +116,7 @@ def run_story_linking(briefing_id: int, date_str: str) -> None:
         logger.info("Matching %d events against %d active stories...", len(events), len(active_stories))
         for event in events:
             event_text = event["title"] + " " + (event.get("summary") or "")
-            candidates = _tfidf_candidates(event_text, active_stories, STORY_MATCH_SIMILARITY_THRESHOLD)
+            candidates = _find_candidates(event_text, active_stories)
 
             if not candidates:
                 continue

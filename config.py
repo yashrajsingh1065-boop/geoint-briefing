@@ -30,16 +30,22 @@ SCHEDULE_MINUTE   = 30
 SCHEDULE_TIMEZONE = os.environ.get("SCHEDULE_TIMEZONE", "Asia/Kolkata")
 
 # ── Processing thresholds ──────────────────────────────────────────────────────
-DEDUP_SIMILARITY_THRESHOLD = 0.55   # lower = more aggressive dedup
-CLUSTER_DISTANCE_THRESHOLD = 0.70   # higher = merge more related stories into one event
+DEDUP_SIMILARITY_THRESHOLD = 0.55   # TF-IDF fallback: lower = more aggressive dedup
+CLUSTER_DISTANCE_THRESHOLD = 0.70   # TF-IDF fallback: higher = merge more related stories
 MIN_ARTICLE_BODY_CHARS     = 150
 MAX_ARTICLES_PER_FEED      = 30
 MAX_CLUSTERS_PER_BRIEFING  = 20
 FETCH_TIMEOUT_SECONDS      = 15
 MAX_FEED_SIZE_BYTES        = 10 * 1024 * 1024  # 10 MB max per feed download
 
+# ── Semantic Embeddings (sentence-transformers) ──────────────────────────────
+EMBEDDING_MODEL_NAME           = "all-MiniLM-L6-v2"
+DEDUP_SEMANTIC_THRESHOLD       = 0.72   # semantic: higher = stricter (0.72 ≈ TF-IDF 0.55)
+CLUSTER_SEMANTIC_DISTANCE      = 0.65   # semantic distance threshold (1 - sim)
+STORY_SEMANTIC_THRESHOLD       = 0.35   # semantic: story matching candidate threshold (Claude confirms)
+
 # ── Live Stories ─────────────────────────────────────────────────────────────
-STORY_MATCH_SIMILARITY_THRESHOLD = 0.30  # TF-IDF candidate threshold for story matching
+STORY_MATCH_SIMILARITY_THRESHOLD = 0.30  # TF-IDF fallback candidate threshold
 STORY_DORMANT_DAYS               = 15    # auto-close after N days with no new events
 MIN_ARTICLES_FOR_STORY           = 3     # minimum articles in an event to consider it for a new story
 NARRATIVE_MAX_CHARS              = 100_000  # cap story narrative growth
