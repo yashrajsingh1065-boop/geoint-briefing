@@ -118,9 +118,39 @@ def _fetch_symbols(session, crumb, symbols_meta, extra_keys=None):
     return results
 
 
+def _fetch_spark(session: requests.Session, crumb: str, symbols: list[str]) -> dict:
+    """Fetch multiple symbols in one request via Yahoo spark endpoint."""
+    try:
+        url = "https://query2.finance.yahoo.com/v8/finance/spark"
+        resp = session.get(
+            url,
+            params={
+                "symbols": ",".join(symbols),
+                "range": "5d",
+                "interval": "1d",
+                "crumb": crumb,
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        results = {}
+        for item in data.get("spark", {}).get("result", []):
+            sym = item.get("symbol")
+            closes = item.get("response", [{}])[0].get("indicators", {}).get("quote", [{}])[0].get("close", [])
+            closes = [c for c in closes if c is not None]
+            if len(closes) >= 2:
+                results[sym] = {"prev": closes[-2], "latest": closes[-1]}
+        return results
+    except Exception as exc:
+        logger.warning("Spark fetch failed: %s", exc)
+        return {}
+
+
 def fetch_all_market_data() -> tuple[list[dict], list[dict]]:
     """
-    Fetch indices + sectors in a single session to avoid rate limiting.
+    Fetch indices + sectors in minimal requests to avoid rate limiting.
+    Uses spark endpoint for batch fetching when possible.
     Returns (indices, sectors) — sectors sorted by pct_change desc.
     """
     session, crumb = _get_session_and_crumb()
@@ -128,10 +158,56 @@ def fetch_all_market_data() -> tuple[list[dict], list[dict]]:
         logger.warning("Could not initialise Yahoo Finance session")
         return [], []
 
-    indices = _fetch_symbols(session, crumb, _INDICES, extra_keys=["flag", "currency"])
+    # Fetch all symbols in two batch requests (indices + sectors)
+    index_symbols = [m["symbol"] for m in _INDICES]
+    sector_symbols = [m["symbol"] for m in _SECTORS]
+
+    index_prices = _fetch_spark(session, crumb, index_symbols)
+    time.sleep(1)
+    sector_prices = _fetch_spark(session, crumb, sector_symbols)
+
+    # If spark failed, fall back to individual fetches
+    if not index_prices:
+        index_prices = {}
+        for meta in _INDICES:
+            p = _fetch_symbol(session, crumb, meta["symbol"])
+            if p:
+                index_prices[meta["symbol"]] = p
+            time.sleep(0.5)
+
+    if not sector_prices:
+        sector_prices = {}
+        for meta in _SECTORS:
+            p = _fetch_symbol(session, crumb, meta["symbol"])
+            if p:
+                sector_prices[meta["symbol"]] = p
+            time.sleep(0.5)
+
+    def _build_results(meta_list, prices, extra_keys):
+        results = []
+        for meta in meta_list:
+            p = prices.get(meta["symbol"])
+            if not p:
+                continue
+            change = round(p["latest"] - p["prev"], 2)
+            pct = round((change / p["prev"]) * 100, 2) if p["prev"] else 0.0
+            entry = {
+                "symbol": meta["symbol"],
+                "name": meta["name"],
+                "value": round(p["latest"], 2),
+                "change": change,
+                "pct_change": pct,
+            }
+            for k in extra_keys:
+                if k in meta:
+                    entry[k] = meta[k]
+            results.append(entry)
+        return results
+
+    indices = _build_results(_INDICES, index_prices, ["flag", "currency"])
     logger.info("Fetched market data for %d/%d indices", len(indices), len(_INDICES))
 
-    sectors = _fetch_symbols(session, crumb, _SECTORS, extra_keys=["icon"])
+    sectors = _build_results(_SECTORS, sector_prices, ["icon"])
     sectors.sort(key=lambda x: x["pct_change"], reverse=True)
     logger.info("Fetched sector data for %d/%d sectors", len(sectors), len(_SECTORS))
 
