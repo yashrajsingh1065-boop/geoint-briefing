@@ -3,7 +3,7 @@
 
 [build.nixpacks]
   python = "3.12"
-  aptPkgs = ["git"]
+  nixPkgs = ["git"]
   cmds = ["python -c \"from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')\""]
 
 [deploy]
