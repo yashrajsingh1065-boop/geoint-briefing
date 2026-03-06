@@ -9,6 +9,6 @@ scikit-learn==1.6.1
 numpy==1.26.4
 python-dotenv==1.0.1
 requests==2.32.3
-yfinance==1.2.16
+yfinance==1.2.0
 tzlocal==5.2
 bleach==6.2.0
