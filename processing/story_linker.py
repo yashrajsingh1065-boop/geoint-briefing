@@ -43,7 +43,7 @@ def _tfidf_candidates(event_text: str, stories: list[dict], threshold: float) ->
         candidates.sort(key=lambda x: x["_similarity"], reverse=True)
         return candidates[:5]
     except Exception as exc:
-        logger.warning("TF-IDF candidate matching failed: %s", exc)
+        logger.warning("TF-IDF candidate matching failed: %s", type(exc).__name__)
         return []
 
 
@@ -172,7 +172,7 @@ def run_story_linking(briefing_id: int, date_str: str) -> None:
                 logger.info("Backfilled %d timeline entries for '%s'", len(history), story_title)
                 time.sleep(0.5)
             except Exception as exc:
-                logger.warning("Historical backfill failed for '%s': %s", story_title, exc)
+                logger.warning("Historical backfill failed for '%s': %s", story_title[:50], type(exc).__name__)
 
     # Step 3: Check dormant stories for closure
     active_stories = db.get_active_stories()  # refresh

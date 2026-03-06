@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import logging
-import socket
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 
+import requests
 import feedparser
 
-from config import RSS_FEEDS, MAX_ARTICLES_PER_FEED, FETCH_TIMEOUT_SECONDS
+from config import (
+    RSS_FEEDS, MAX_ARTICLES_PER_FEED, FETCH_TIMEOUT_SECONDS,
+    MAX_FEED_SIZE_BYTES, validate_feed_url,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +33,7 @@ def fetch_all_feeds(feeds: list[dict] = None) -> list[dict]:
                 raw_articles.extend(articles)
                 logger.info("%-35s → %d articles", feed_config["name"], len(articles))
             except Exception as exc:
-                logger.warning("Feed %s raised %s", feed_config["name"], exc)
+                logger.warning("Feed %s failed: %s", feed_config["name"], type(exc).__name__)
 
     logger.info("Total raw articles fetched: %d", len(raw_articles))
     return raw_articles
@@ -41,15 +44,49 @@ def _fetch_single_feed(feed_config: dict) -> list[dict]:
     Parse one RSS feed and return up to MAX_ARTICLES_PER_FEED RawArticle dicts.
     Never raises — returns [] on any error.
     """
-    original_timeout = socket.getdefaulttimeout()
-    try:
-        socket.setdefaulttimeout(FETCH_TIMEOUT_SECONDS)
-        parsed = feedparser.parse(feed_config["url"])
-    except Exception as exc:
-        logger.debug("Failed to fetch %s: %s", feed_config["name"], exc)
+    url = feed_config.get("url", "")
+
+    # SSRF protection: validate URL before fetching
+    if not validate_feed_url(url):
+        logger.warning("Blocked unsafe feed URL for %s", feed_config.get("name", "unknown"))
         return []
-    finally:
-        socket.setdefaulttimeout(original_timeout)
+
+    try:
+        # Use requests with explicit TLS verification and size limit
+        resp = requests.get(
+            url,
+            timeout=FETCH_TIMEOUT_SECONDS,
+            verify=True,
+            headers={"User-Agent": "GeointBriefing/1.0"},
+            stream=True,
+        )
+        resp.raise_for_status()
+
+        # Enforce size limit to prevent memory exhaustion
+        content_length = int(resp.headers.get("Content-Length", 0))
+        if content_length > MAX_FEED_SIZE_BYTES:
+            logger.warning("Feed %s too large (%d bytes), skipping", feed_config["name"], content_length)
+            return []
+
+        # Read with size cap even if Content-Length is missing/wrong
+        chunks = []
+        total = 0
+        for chunk in resp.iter_content(chunk_size=65536):
+            total += len(chunk)
+            if total > MAX_FEED_SIZE_BYTES:
+                logger.warning("Feed %s exceeded size limit during download, truncating", feed_config["name"])
+                break
+            chunks.append(chunk)
+
+        raw_content = b"".join(chunks)
+        parsed = feedparser.parse(raw_content)
+
+    except requests.RequestException as exc:
+        logger.debug("Failed to fetch %s: %s", feed_config["name"], type(exc).__name__)
+        return []
+    except Exception as exc:
+        logger.debug("Failed to parse %s: %s", feed_config["name"], type(exc).__name__)
+        return []
 
     articles = []
     for entry in parsed.entries[:MAX_ARTICLES_PER_FEED]:
@@ -75,11 +112,15 @@ def _fetch_single_feed(feed_config: dict) -> list[dict]:
 
 
 def _get_url(entry) -> str:
-    """Extract canonical URL from a feed entry."""
+    """Extract canonical URL from a feed entry. Only allow http/https."""
+    url = ""
     if hasattr(entry, "link") and entry.link:
-        return entry.link.strip()
-    if hasattr(entry, "id") and entry.id and entry.id.startswith("http"):
-        return entry.id.strip()
+        url = entry.link.strip()
+    elif hasattr(entry, "id") and entry.id and entry.id.startswith("http"):
+        url = entry.id.strip()
+    # Only allow http/https URLs
+    if url and url.startswith(("http://", "https://")):
+        return url
     return ""
 
 

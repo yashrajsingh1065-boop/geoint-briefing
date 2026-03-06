@@ -4,7 +4,12 @@ import threading
 import webbrowser
 from datetime import date
 
+from config import OPEN_BROWSER
+
 logger = logging.getLogger(__name__)
+
+# Pipeline lock to prevent concurrent runs from scheduler + manual trigger
+_pipeline_lock = threading.Lock()
 
 # Import lazily inside the function to avoid circular imports at module load time
 
@@ -21,16 +26,28 @@ def _fetch_market_data(date_str: str) -> None:
             save_market_snapshot(date_str, indices, "", sectors)
             logger.info("Market snapshot saved (%d indices, %d sectors)", len(indices), len(sectors))
     except Exception as exc:
-        logger.warning("Market data fetch failed (non-fatal): %s", exc)
+        logger.warning("Market data fetch failed (non-fatal): %s", type(exc).__name__)
 
 
 def run_daily_pipeline() -> None:
     """
     The main pipeline orchestrator. Runs all stages in sequence:
-    fetch → clean → save → deduplicate → cluster → analyze → persist → open browser.
+    fetch -> clean -> save -> deduplicate -> cluster -> analyze -> persist -> open browser.
     Safe to call multiple times per day — skips briefing if already complete,
     but always refreshes market data.
     """
+    if not _pipeline_lock.acquire(blocking=False):
+        logger.info("Pipeline already running — skipping concurrent invocation.")
+        return
+
+    try:
+        _run_pipeline_locked()
+    finally:
+        _pipeline_lock.release()
+
+
+def _run_pipeline_locked() -> None:
+    """Internal pipeline logic, called while holding the lock."""
     from storage import database as db
     from ingestion.fetcher import fetch_all_feeds
     from ingestion.cleaner import clean_articles
@@ -116,19 +133,33 @@ def run_daily_pipeline() -> None:
             from processing.story_linker import run_story_linking
             run_story_linking(briefing_id, date_str)
         except Exception as exc:
-            logger.warning("Story linking failed (non-fatal): %s", exc)
+            logger.warning("Story linking failed (non-fatal): %s", type(exc).__name__)
 
         db.mark_briefing_complete(briefing_id)
         logger.info("=== Briefing complete: %d events saved ===", len(analyses))
 
-        # 7. Open dashboard in browser (local only — skipped on headless servers)
-        if os.environ.get("DISPLAY") or os.name == "nt" or __import__("sys").platform == "darwin":
+        # Open dashboard in browser (configurable)
+        if _should_open_browser():
             _open_browser_delayed()
 
     except Exception as exc:
-        logger.exception("Pipeline failed: %s", exc)
+        logger.exception("Pipeline failed: %s", type(exc).__name__)
         db.mark_briefing_error(briefing_id)
         raise
+
+
+def _should_open_browser() -> bool:
+    """Check if browser should be opened based on configuration."""
+    if OPEN_BROWSER == "false":
+        return False
+    if OPEN_BROWSER == "true":
+        return True
+    # "auto" — only on desktop environments
+    return (
+        os.environ.get("DISPLAY")
+        or os.name == "nt"
+        or __import__("sys").platform == "darwin"
+    )
 
 
 def _open_browser_delayed() -> None:

@@ -1,4 +1,4 @@
-anthropic>=0.84.0
+anthropic==0.84.0
 feedparser==6.0.12
 APScheduler==3.11.2
 fastapi==0.115.6
@@ -9,5 +9,6 @@ scikit-learn==1.6.1
 numpy==1.26.4
 python-dotenv==1.0.1
 requests==2.32.3
-yfinance>=1.2.0
+yfinance==1.2.16
 tzlocal==5.2
+bleach==6.2.0

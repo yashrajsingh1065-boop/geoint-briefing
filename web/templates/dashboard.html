@@ -286,9 +286,27 @@ setInterval(function() {
 }, 15000);
 {% endif %}
 
+function _getToken() {
+  var t = sessionStorage.getItem('admin_token');
+  if (!t) {
+    t = prompt('Enter admin token:');
+    if (t) sessionStorage.setItem('admin_token', t);
+  }
+  return t || '';
+}
+
+function _authHeaders() {
+  return {'X-Admin-Token': _getToken()};
+}
+
 function storyAction(url, actionId) {
-  fetch(url, {method:'POST'})
-    .then(function() {
+  fetch(url, {method:'POST', headers: _authHeaders()})
+    .then(function(r) {
+      if (r.status === 401 || r.status === 403) {
+        sessionStorage.removeItem('admin_token');
+        alert('Invalid admin token. Please try again.');
+        return;
+      }
       var el = document.getElementById('action-' + actionId);
       if (el) el.style.display = 'none';
       setTimeout(function(){ location.reload(); }, 500);
@@ -299,8 +317,16 @@ function storyAction(url, actionId) {
 function triggerPipeline() {
   var btn = document.getElementById('triggerBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Starting…'; }
-  fetch('/api/trigger', {method:'POST'})
-    .then(function() { setTimeout(function(){ location.reload(); }, 2000); })
+  fetch('/api/trigger', {method:'POST', headers: _authHeaders()})
+    .then(function(r) {
+      if (r.status === 401 || r.status === 403) {
+        sessionStorage.removeItem('admin_token');
+        if (btn) { btn.disabled = false; btn.textContent = 'Run briefing now'; }
+        alert('Invalid admin token. Please try again.');
+        return;
+      }
+      setTimeout(function(){ location.reload(); }, 2000);
+    })
     .catch(function() { location.reload(); });
 }
 </script>

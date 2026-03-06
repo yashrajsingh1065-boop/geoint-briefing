@@ -1,21 +1,34 @@
 from __future__ import annotations
 
+import os
 import sqlite3
 import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from config import DB_PATH
+from config import DB_PATH, NARRATIVE_MAX_CHARS
 
 logger = logging.getLogger(__name__)
 
 
 def _connect() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(DB_PATH), timeout=10)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
     return conn
+
+
+def _secure_db_permissions() -> None:
+    """Set restrictive file permissions on the database and WAL files."""
+    for suffix in ("", "-shm", "-wal"):
+        path = Path(str(DB_PATH) + suffix)
+        if path.exists():
+            try:
+                os.chmod(path, 0o600)
+            except OSError:
+                pass
 
 
 def init_db() -> None:
@@ -105,7 +118,8 @@ def init_db() -> None:
                 created_at   TEXT NOT NULL
             );
         """)
-    logger.info("Database initialized at %s", DB_PATH)
+    _secure_db_permissions()
+    logger.info("Database initialized")
 
 
 def _now() -> str:
@@ -338,6 +352,9 @@ def update_story(story_id: int, narrative_addition: str, urgency: int, last_even
         row = conn.execute("SELECT narrative FROM stories WHERE id = ?", (story_id,)).fetchone()
         if row:
             new_narrative = (row["narrative"] + "\n\n" + narrative_addition).strip()
+            # Cap narrative size to prevent unbounded growth
+            if len(new_narrative) > NARRATIVE_MAX_CHARS:
+                new_narrative = new_narrative[:NARRATIVE_MAX_CHARS]
             conn.execute(
                 """UPDATE stories SET narrative = ?, urgency = ?, last_event_date = ?
                    WHERE id = ?""",

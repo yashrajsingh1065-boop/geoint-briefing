@@ -1,6 +1,9 @@
 [build]
   builder = "nixpacks"
 
+[build.nixpacks]
+  python = "3.12"
+
 [deploy]
   startCommand = "python main.py"
   numReplicas = 1

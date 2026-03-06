@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 import threading
 from datetime import date
 
@@ -7,11 +8,11 @@ from zoneinfo import ZoneInfo
 import uvicorn
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from config import SCHEDULE_HOUR, SCHEDULE_MINUTE, SCHEDULE_TIMEZONE
+from config import SCHEDULE_HOUR, SCHEDULE_MINUTE, SCHEDULE_TIMEZONE, ANTHROPIC_API_KEY, ADMIN_TOKEN, LOG_LEVEL
 from storage.database import init_db, get_briefing_by_date
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
     format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
     datefmt="%H:%M:%S",
 )
@@ -25,6 +26,16 @@ def _start_pipeline_in_background() -> None:
 
 
 def main() -> None:
+    # 0. Validate critical configuration
+    if not ANTHROPIC_API_KEY:
+        logger.error("ANTHROPIC_API_KEY is not set — pipeline will not work.")
+        sys.exit(1)
+    if not ADMIN_TOKEN:
+        logger.warning(
+            "ADMIN_TOKEN is not set — POST endpoints will reject all requests. "
+            "Set ADMIN_TOKEN in .env to enable admin actions."
+        )
+
     # 1. Initialize database
     init_db()
 
