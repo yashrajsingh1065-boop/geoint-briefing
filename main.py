@@ -8,7 +8,11 @@ from zoneinfo import ZoneInfo
 import uvicorn
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from config import SCHEDULE_HOUR, SCHEDULE_MINUTE, SCHEDULE_TIMEZONE, ANTHROPIC_API_KEY, ADMIN_TOKEN, LOG_LEVEL
+from config import (
+    SCHEDULE_HOUR, SCHEDULE_MINUTE, SCHEDULE_TIMEZONE,
+    ANTHROPIC_API_KEY, ADMIN_TOKEN, LOG_LEVEL,
+    CLAUDE_MODEL, CLAUDE_MAX_TOKENS, CLAUDE_TEMPERATURE,
+)
 from storage.database import init_db, get_briefing_by_date
 
 logging.basicConfig(
@@ -36,10 +40,20 @@ def main() -> None:
             "Set ADMIN_TOKEN in .env to enable admin actions."
         )
 
-    # 1. Initialize database
+    # 1. Configure claude-toolkit for this project
+    from claude_toolkit.client import configure as configure_toolkit
+    configure_toolkit(
+        project_name="geoint",
+        api_key=ANTHROPIC_API_KEY,
+        model=CLAUDE_MODEL,
+        max_tokens=CLAUDE_MAX_TOKENS,
+        temperature=CLAUDE_TEMPERATURE,
+    )
+
+    # 2. Initialize database
     init_db()
 
-    # 2. Register daily cron job
+    # 3. Register daily cron job
     tz = ZoneInfo(SCHEDULE_TIMEZONE)
     scheduler = BackgroundScheduler(timezone=tz)
     scheduler.add_job(
@@ -56,7 +70,7 @@ def main() -> None:
         SCHEDULE_HOUR, SCHEDULE_MINUTE,
     )
 
-    # 3. Run pipeline immediately if no briefing for today
+    # 4. Run pipeline immediately if no briefing for today
     today = date.today().isoformat()
     existing = get_briefing_by_date(today)
     if existing is None or existing["status"] in ("pending", "error"):
@@ -65,7 +79,7 @@ def main() -> None:
     else:
         logger.info("Briefing for %s already exists (status: %s)", today, existing["status"])
 
-    # 4. Start FastAPI server (blocks until Ctrl-C)
+    # 5. Start FastAPI server (blocks until Ctrl-C)
     from web.app import create_app
     app = create_app()
     port = int(os.environ.get("PORT", 8000))

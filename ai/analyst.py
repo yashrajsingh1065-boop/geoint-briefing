@@ -4,37 +4,29 @@ import json
 import logging
 import time
 
-import anthropic
+from claude_toolkit.client import get_client, get_config
+from claude_toolkit.cache import cacheable_system
+from claude_toolkit.batch import BatchProcessor
+from claude_toolkit.parsing import parse_json_safe as _parse_json_safe
+from claude_toolkit.sanitize import sanitize_source_text as _sanitize_source_text
+from claude_toolkit.usage import get_tracker
 
-from config import (
-    ANTHROPIC_API_KEY,
-    CLAUDE_MODEL,
-    CLAUDE_MAX_TOKENS,
-    CLAUDE_TEMPERATURE,
-    REGIONS,
-)
+from config import REGIONS
 
 logger = logging.getLogger(__name__)
 
-_client: anthropic.Anthropic | None = None
-
-
-def _get_client() -> anthropic.Anthropic:
-    global _client
-    if _client is None:
-        if not ANTHROPIC_API_KEY:
-            raise RuntimeError("ANTHROPIC_API_KEY is not configured")
-        _client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    return _client
-
+_PROJECT = "geoint"
 
 # ── Prompt ────────────────────────────────────────────────────────────────────
 
-_SYSTEM_PROMPT = (
+_SYSTEM_PROMPT_TEXT = (
     "You are a senior geopolitical analyst producing an intelligence briefing. "
     "You write with clarity, precision, and strategic depth. "
     "You always respond with valid JSON only — no markdown fences, no extra text."
 )
+
+# Cached system prompt — reused across all calls in a pipeline run (90% savings)
+_SYSTEM_PROMPT = cacheable_system(_SYSTEM_PROMPT_TEXT)
 
 _USER_PROMPT_TEMPLATE = """Below are news articles covering a single world event (from multiple sources).
 
@@ -57,25 +49,6 @@ Respond with ONLY a JSON object using these exact keys:
 }}"""
 
 
-def _sanitize_source_text(text: str) -> str:
-    """Remove patterns that could be used for prompt injection."""
-    import re
-    # Collapse whitespace (prevents evasion via newlines/tabs between words)
-    collapsed = re.sub(r"\s+", " ", text)
-    # Strip lines that look like prompt manipulation attempts
-    collapsed = re.sub(r"(?i)(ignore|disregard|forget|override|bypass)\s+(all\s+)?(previous|above|prior|earlier|preceding|system)\s+(instructions?|prompts?|rules?|context|directives?)", "[REDACTED]", collapsed)
-    collapsed = re.sub(r"(?i)respond\s+with\s+(this|the\s+following|only)\s+json", "[REDACTED]", collapsed)
-    collapsed = re.sub(r"(?i)you\s+are\s+(now|a|an)\s+", "[REDACTED] ", collapsed)
-    collapsed = re.sub(r"(?i)system\s*prompt", "[REDACTED]", collapsed)
-    collapsed = re.sub(r"(?i)new\s+instructions?\s*:", "[REDACTED]:", collapsed)
-    collapsed = re.sub(r"(?i)act\s+as\s+(if\s+)?(you\s+)?(are|were)\s+", "[REDACTED] ", collapsed)
-    collapsed = re.sub(r"(?i)do\s+not\s+follow\s+(the\s+)?(above|previous|prior)", "[REDACTED]", collapsed)
-    # Reconstruct with original whitespace where possible (only redacted parts change)
-    if "[REDACTED]" in collapsed:
-        return collapsed
-    return text
-
-
 def _build_prompt(cluster: dict) -> str:
     sanitized_text = _sanitize_source_text(cluster["combined_text"])
     return _USER_PROMPT_TEMPLATE.format(
@@ -87,28 +60,24 @@ def _build_prompt(cluster: dict) -> str:
 # ── Core API call ─────────────────────────────────────────────────────────────
 
 def _call_claude(prompt: str) -> str:
-    client = _get_client()
+    client = get_client(_PROJECT)
+    cfg = get_config(_PROJECT)
+    tracker = get_tracker(_PROJECT)
     response = client.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=CLAUDE_MAX_TOKENS,
-        temperature=CLAUDE_TEMPERATURE,
+        model=cfg.model,
+        max_tokens=cfg.max_tokens,
+        temperature=cfg.temperature,
         system=_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}],
     )
+    tracker.record(response)
     return response.content[0].text
 
 
 def _parse_response(raw: str) -> dict:
     """Parse Claude's JSON response and validate/coerce fields."""
-    # Strip any accidental markdown fences
-    text = raw.strip()
-    if text.startswith("```"):
-        text = text.split("```")[1]
-        if text.startswith("json"):
-            text = text[4:]
-        text = text.strip()
-
-    data = json.loads(text)
+    from claude_toolkit.parsing import parse_json_response
+    data = parse_json_response(raw)
 
     # Coerce urgency to int 1-5
     urgency = int(data.get("urgency", 3))
@@ -181,22 +150,25 @@ def generate_market_summary(indices: list[dict]) -> tuple[str, dict]:
             )
         index_text = "\n".join(lines)
 
-        client = _get_client()
+        client = get_client(_PROJECT)
+        cfg = get_config(_PROJECT)
+        tracker = get_tracker(_PROJECT)
+        _market_system = cacheable_system(
+            "You are a financial analyst. Given index data, return a JSON object with two keys:\n"
+            "1. \"overall\": a 3-4 sentence market commentary covering the global picture.\n"
+            "2. \"per_index\": an object mapping each symbol to a single concise sentence "
+            "explaining the key driver behind that index's move today.\n"
+            "Return only valid JSON, no markdown fences."
+        )
         response = client.messages.create(
-            model=CLAUDE_MODEL,
+            model=cfg.model,
             max_tokens=800,
             temperature=0.4,
-            system=(
-                "You are a financial analyst. Given index data, return a JSON object with two keys:\n"
-                "1. \"overall\": a 3-4 sentence market commentary covering the global picture.\n"
-                "2. \"per_index\": an object mapping each symbol to a single concise sentence "
-                "explaining the key driver behind that index's move today.\n"
-                "Return only valid JSON, no markdown fences."
-            ),
+            system=_market_system,
             messages=[{"role": "user", "content": index_text}],
         )
-        import json as _json
-        data = _json.loads(response.content[0].text.strip())
+        tracker.record(response)
+        data = _parse_json_safe(response.content[0].text.strip())
         overall = data.get("overall", "")
         per_index = data.get("per_index", {})
         return overall, per_index
@@ -451,29 +423,40 @@ IMPORTANT: Use accurate, real dates. Order each section from oldest to newest.""
         return []
 
 
-def _parse_json_safe(raw: str) -> dict:
-    """Parse JSON from Claude response, handling markdown fences."""
-    text = raw.strip()
-    if text.startswith("```"):
-        text = text.split("```")[1]
-        if text.startswith("json"):
-            text = text[4:]
-        text = text.strip()
-    return json.loads(text)
-
-
 def analyze_all_events(clusters: list[dict]) -> list[dict]:
     """
-    Analyze all event clusters sequentially.
-    Adds a short sleep between calls to respect rate limits.
+    Analyze all event clusters. Uses batch API for 5+ events (50% cost savings),
+    falls back to sequential for smaller batches.
     Returns list of AnalysisResult dicts in the same order as input.
     """
+    if not clusters:
+        return []
+
+    bp = BatchProcessor(project=_PROJECT)
+    for i, cluster in enumerate(clusters):
+        prompt = _build_prompt(cluster)
+        bp.add(
+            f"event-{i}",
+            system=_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+    logger.info("Analyzing %d events...", len(clusters))
+    raw_results = bp.execute_or_sequential(batch_threshold=5)
+
+    # Log usage summary
+    tracker = get_tracker(_PROJECT)
+    tracker.stats.log_summary()
+
     results = []
-    total = len(clusters)
-    for i, cluster in enumerate(clusters, 1):
-        logger.info("Analyzing event %d/%d ...", i, total)
-        result = analyze_event(cluster)
-        results.append(result)
-        if i < total:
-            time.sleep(0.5)
+    for i, cluster in enumerate(clusters):
+        r = raw_results.get(f"event-{i}")
+        if r and r.success:
+            try:
+                results.append(_parse_response(r.text))
+            except Exception:
+                results.append(_fallback_result(cluster))
+        else:
+            logger.warning("Event %d failed: %s", i, r.error if r else "no result")
+            results.append(_fallback_result(cluster))
     return results
