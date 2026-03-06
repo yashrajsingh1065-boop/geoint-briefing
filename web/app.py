@@ -226,14 +226,13 @@ def create_app() -> FastAPI:
                 run_story_linking(briefing["id"], date_str)
             except Exception:
                 pass
-            # Sector + market refresh
+            # Sector + market refresh (single session)
             try:
-                from market.fetcher import fetch_market_data, fetch_sector_data
-                from storage.database import save_market_snapshot, get_market_snapshot
-                existing = get_market_snapshot(date_str)
-                indices = existing["indices"] if existing else fetch_market_data()
-                sectors = fetch_sector_data()
-                save_market_snapshot(date_str, indices, "", sectors)
+                from market.fetcher import fetch_all_market_data
+                from storage.database import save_market_snapshot
+                indices, sectors = fetch_all_market_data()
+                if indices:
+                    save_market_snapshot(date_str, indices, "", sectors)
             except Exception:
                 pass
         t = threading.Thread(target=_run, daemon=True, name="resync")

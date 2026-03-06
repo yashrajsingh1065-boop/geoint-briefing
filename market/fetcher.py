@@ -91,70 +91,59 @@ def _fetch_symbol(
         return None
 
 
-def fetch_market_data() -> list[dict]:
+def _fetch_symbols(session, crumb, symbols_meta, extra_keys=None):
+    """Fetch price data for a list of symbol metadata dicts."""
+    results = []
+    for meta in symbols_meta:
+        prices = _fetch_symbol(session, crumb, meta["symbol"])
+        if prices is None:
+            continue
+        prev_close = prices["prev"]
+        latest = prices["latest"]
+        change = round(latest - prev_close, 2)
+        pct_change = round((change / prev_close) * 100, 2) if prev_close else 0.0
+        entry = {
+            "symbol":     meta["symbol"],
+            "name":       meta["name"],
+            "value":      round(latest, 2),
+            "change":     change,
+            "pct_change": pct_change,
+        }
+        if extra_keys:
+            for k in extra_keys:
+                if k in meta:
+                    entry[k] = meta[k]
+        results.append(entry)
+        time.sleep(0.5)
+    return results
+
+
+def fetch_all_market_data() -> tuple[list[dict], list[dict]]:
     """
-    Fetch previous-day close for all 7 indices via Yahoo Finance API.
-    Uses crumb-based auth with browser headers to avoid rate limiting.
-    Returns empty list on failure.
+    Fetch indices + sectors in a single session to avoid rate limiting.
+    Returns (indices, sectors) — sectors sorted by pct_change desc.
     """
     session, crumb = _get_session_and_crumb()
     if session is None:
         logger.warning("Could not initialise Yahoo Finance session")
-        return []
+        return [], []
 
-    results = []
-    for meta in _INDICES:
-        prices = _fetch_symbol(session, crumb, meta["symbol"])
-        if prices is None:
-            continue
-        prev_close = prices["prev"]
-        latest = prices["latest"]
-        change = round(latest - prev_close, 2)
-        pct_change = round((change / prev_close) * 100, 2) if prev_close else 0.0
-        results.append({
-            "symbol":     meta["symbol"],
-            "name":       meta["name"],
-            "flag":       meta["flag"],
-            "value":      round(latest, 2),
-            "change":     change,
-            "pct_change": pct_change,
-            "currency":   meta["currency"],
-        })
-        time.sleep(0.5)  # be polite between requests
+    indices = _fetch_symbols(session, crumb, _INDICES, extra_keys=["flag", "currency"])
+    logger.info("Fetched market data for %d/%d indices", len(indices), len(_INDICES))
 
-    logger.info("Fetched market data for %d/%d indices", len(results), len(_INDICES))
-    return results
+    sectors = _fetch_symbols(session, crumb, _SECTORS, extra_keys=["icon"])
+    sectors.sort(key=lambda x: x["pct_change"], reverse=True)
+    logger.info("Fetched sector data for %d/%d sectors", len(sectors), len(_SECTORS))
+
+    return indices, sectors
+
+
+# Legacy wrappers for backward compatibility
+def fetch_market_data() -> list[dict]:
+    indices, _ = fetch_all_market_data()
+    return indices
 
 
 def fetch_sector_data() -> list[dict]:
-    """
-    Fetch sector ETF performance for industry-level gainers/losers.
-    Returns list sorted by pct_change descending (gainers first).
-    """
-    session, crumb = _get_session_and_crumb()
-    if session is None:
-        logger.warning("Could not initialise Yahoo Finance session for sectors")
-        return []
-
-    results = []
-    for meta in _SECTORS:
-        prices = _fetch_symbol(session, crumb, meta["symbol"])
-        if prices is None:
-            continue
-        prev_close = prices["prev"]
-        latest = prices["latest"]
-        change = round(latest - prev_close, 2)
-        pct_change = round((change / prev_close) * 100, 2) if prev_close else 0.0
-        results.append({
-            "symbol":     meta["symbol"],
-            "name":       meta["name"],
-            "icon":       meta["icon"],
-            "value":      round(latest, 2),
-            "change":     change,
-            "pct_change": pct_change,
-        })
-        time.sleep(0.5)
-
-    results.sort(key=lambda x: x["pct_change"], reverse=True)
-    logger.info("Fetched sector data for %d/%d sectors", len(results), len(_SECTORS))
-    return results
+    _, sectors = fetch_all_market_data()
+    return sectors

@@ -12,12 +12,11 @@ logger = logging.getLogger(__name__)
 def _fetch_market_data(date_str: str) -> None:
     """Fetch market indices and save snapshot. Always runs independently."""
     try:
-        from market.fetcher import fetch_market_data, fetch_sector_data
+        from market.fetcher import fetch_all_market_data
         from storage.database import save_market_snapshot
 
-        logger.info("Fetching market indices...")
-        indices = fetch_market_data()
-        sectors = fetch_sector_data()
+        logger.info("Fetching market indices + sectors...")
+        indices, sectors = fetch_all_market_data()
         if indices:
             save_market_snapshot(date_str, indices, "", sectors)
             logger.info("Market snapshot saved (%d indices, %d sectors)", len(indices), len(sectors))
