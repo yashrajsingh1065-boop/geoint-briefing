@@ -28,6 +28,11 @@ MAX_ARTICLES_PER_FEED      = 30
 MAX_CLUSTERS_PER_BRIEFING  = 20
 FETCH_TIMEOUT_SECONDS      = 15
 
+# ── Live Stories ─────────────────────────────────────────────────────────────
+STORY_MATCH_SIMILARITY_THRESHOLD = 0.30  # TF-IDF candidate threshold for story matching
+STORY_DORMANT_DAYS               = 15    # auto-close after N days with no new events
+MIN_ARTICLES_FOR_STORY           = 3     # minimum articles in an event to consider it for a new story
+
 # ── Regions ────────────────────────────────────────────────────────────────────
 REGIONS = [
     "India", "United States", "China", "Russia", "European Union",

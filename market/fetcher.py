@@ -17,6 +17,21 @@ _INDICES = [
     {"symbol": "^NSEI",  "name": "Nifty 50",   "flag": "🇮🇳", "currency": "INR"},
 ]
 
+# Sector ETFs for industry-level gainers/losers
+_SECTORS = [
+    {"symbol": "XLK",  "name": "Technology",             "icon": "💻"},
+    {"symbol": "XLF",  "name": "Financials",             "icon": "🏦"},
+    {"symbol": "XLE",  "name": "Energy",                 "icon": "⛽"},
+    {"symbol": "XLV",  "name": "Healthcare",             "icon": "🏥"},
+    {"symbol": "XLI",  "name": "Industrials",            "icon": "🏭"},
+    {"symbol": "XLC",  "name": "Communication",          "icon": "📡"},
+    {"symbol": "XLY",  "name": "Consumer Discretionary", "icon": "🛍️"},
+    {"symbol": "XLP",  "name": "Consumer Staples",       "icon": "🛒"},
+    {"symbol": "XLU",  "name": "Utilities",              "icon": "⚡"},
+    {"symbol": "XLB",  "name": "Materials",              "icon": "🧱"},
+    {"symbol": "XLRE", "name": "Real Estate",            "icon": "🏠"},
+]
+
 _HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -108,4 +123,38 @@ def fetch_market_data() -> list[dict]:
         time.sleep(0.5)  # be polite between requests
 
     logger.info("Fetched market data for %d/%d indices", len(results), len(_INDICES))
+    return results
+
+
+def fetch_sector_data() -> list[dict]:
+    """
+    Fetch sector ETF performance for industry-level gainers/losers.
+    Returns list sorted by pct_change descending (gainers first).
+    """
+    session, crumb = _get_session_and_crumb()
+    if session is None:
+        logger.warning("Could not initialise Yahoo Finance session for sectors")
+        return []
+
+    results = []
+    for meta in _SECTORS:
+        prices = _fetch_symbol(session, crumb, meta["symbol"])
+        if prices is None:
+            continue
+        prev_close = prices["prev"]
+        latest = prices["latest"]
+        change = round(latest - prev_close, 2)
+        pct_change = round((change / prev_close) * 100, 2) if prev_close else 0.0
+        results.append({
+            "symbol":     meta["symbol"],
+            "name":       meta["name"],
+            "icon":       meta["icon"],
+            "value":      round(latest, 2),
+            "change":     change,
+            "pct_change": pct_change,
+        })
+        time.sleep(0.5)
+
+    results.sort(key=lambda x: x["pct_change"], reverse=True)
+    logger.info("Fetched sector data for %d/%d sectors", len(results), len(_SECTORS))
     return results

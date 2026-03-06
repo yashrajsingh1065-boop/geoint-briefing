@@ -7,6 +7,81 @@
   <h1>Briefing Archive</h1>
 </div>
 
+{# ── Concluded Stories ── #}
+{% if closed_stories %}
+<div class="section-label" style="margin-bottom:0.75rem;">Concluded Stories</div>
+
+{% for story in closed_stories %}
+<div class="concluded-story">
+  <div class="card-meta" style="margin-bottom:0.5rem;">
+    <span class="concluded-badge">Concluded</span>
+    {% set u = story.urgency %}
+    {% if u == 5 %}<span class="badge b5">Crisis</span>
+    {% elif u == 4 %}<span class="badge b4">High</span>
+    {% elif u == 3 %}<span class="badge b3">Significant</span>
+    {% elif u == 2 %}<span class="badge b2">Moderate</span>
+    {% else %}<span class="badge b1">Routine</span>
+    {% endif %}
+  </div>
+  <div class="story-title" style="margin-bottom:0.5rem;">{{ story.title }}</div>
+  <div style="font-size:0.75rem; color:var(--muted); margin-bottom:0.5rem;">
+    {{ story.created_at[:10] }} &mdash; {{ story.closed_at[:10] if story.closed_at else "?" }}
+    &middot; {{ story.timeline|length }} events
+  </div>
+
+  {% set main_entries = story.timeline | selectattr("entry_type", "ne", "historical") | list %}
+  {% set hist_entries = story.timeline | selectattr("entry_type", "eq", "historical") | list %}
+
+  {% if main_entries %}
+  <details class="analysis">
+    <summary><span class="arrow">&#9658;</span> Full timeline ({{ main_entries|length }} events)</summary>
+    <div class="story-timeline">
+      {% for entry in main_entries %}
+      <div class="timeline-entry">
+        <div class="timeline-date">{{ entry.event_date | fmtdate }}</div>
+        <div class="timeline-content">
+          <div class="tl-title">
+            {% if entry.event_id %}
+              <a href="/event/{{ entry.event_id }}">{{ entry.title }}</a>
+            {% else %}
+              {{ entry.title }}
+            {% endif %}
+          </div>
+          {% if entry.summary_line %}
+          <div class="tl-summary">{{ entry.summary_line }}</div>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+
+      {% if hist_entries %}
+      <details class="hist-context">
+        <summary><span class="arrow">&#9658;</span> Historical context ({{ hist_entries|length }})</summary>
+        <div class="hist-entries">
+          {% for entry in hist_entries %}
+          <div class="timeline-entry hist">
+            <div class="timeline-date">{{ entry.event_date | fmtdate }}</div>
+            <div class="timeline-content">
+              <div class="tl-title">{{ entry.title }}</div>
+              {% if entry.summary_line %}
+              <div class="tl-summary">{{ entry.summary_line }}</div>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </details>
+      {% endif %}
+    </div>
+  </details>
+  {% endif %}
+</div>
+{% endfor %}
+
+<div style="border-top:1px solid var(--border); margin:1rem 0 1.5rem;"></div>
+{% endif %}
+
+{# ── Briefing Archive ── #}
 {% if not entries %}
   <p style="color:var(--muted);">No past briefings found.</p>
 {% else %}

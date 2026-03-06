@@ -39,12 +39,106 @@
   <span class="page-meta">{{ date }} &mdash; {{ events|length }} events</span>
 </div>
 
-{# Regional breakdown #}
+{# ── Pending Actions (close/merge suggestions) ── #}
+{% if actions %}
+{% for action in actions %}
+<div class="action-banner" id="action-{{ action.id }}">
+  <div>
+    {% if action.action_type == "close" %}
+    <div class="action-text">Close story: <strong>{{ action.story_title }}</strong></div>
+    {% elif action.action_type == "merge" %}
+    <div class="action-text">Merge <strong>{{ action.story_title }}</strong> into <strong>{{ action.merge_target_title or "?" }}</strong></div>
+    {% endif %}
+    <div class="action-reason">{{ action.reason }}</div>
+  </div>
+  <div class="action-btns">
+    {% if action.action_type == "close" %}
+    <button class="btn-sm approve" onclick="storyAction('/api/story/{{ action.story_id }}/close', {{ action.id }})">Approve</button>
+    {% elif action.action_type == "merge" %}
+    <button class="btn-sm approve" onclick="storyAction('/api/story/action/{{ action.id }}/approve-merge', {{ action.id }})">Approve</button>
+    {% endif %}
+    <button class="btn-sm dismiss" onclick="storyAction('/api/story/action/{{ action.id }}/dismiss', {{ action.id }})">Dismiss</button>
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+
+{# ── Live Stories Section ── #}
+{% if stories %}
+<div class="section-label">Live Stories</div>
+
+{% for story in stories %}
+{% set u = story.urgency %}
+<div class="story-card u{{ u }}">
+  <div class="card-meta">
+    <span class="live-badge">Live</span>
+    {% if u == 5 %}<span class="badge b5">Crisis</span>
+    {% elif u == 4 %}<span class="badge b4">High</span>
+    {% elif u == 3 %}<span class="badge b3">Significant</span>
+    {% elif u == 2 %}<span class="badge b2">Moderate</span>
+    {% else %}<span class="badge b1">Routine</span>
+    {% endif %}
+  </div>
+
+  <div class="story-title">{{ story.title }}</div>
+
+  {% set main_entries = story.timeline | selectattr("entry_type", "ne", "historical") | list %}
+  {% set hist_entries = story.timeline | selectattr("entry_type", "eq", "historical") | list %}
+
+  <details class="analysis">
+    <summary><span class="arrow">&#9658;</span> Timeline ({{ main_entries|length }} events)</summary>
+    <div class="story-timeline">
+      {% for entry in main_entries %}
+      <div class="timeline-entry">
+        <div class="timeline-date">{{ entry.event_date | fmtdate }}</div>
+        <div class="timeline-content">
+          <div class="tl-title">
+            {% if entry.event_id %}
+              <a href="/event/{{ entry.event_id }}">{{ entry.title }}</a>
+            {% else %}
+              {{ entry.title }}
+            {% endif %}
+          </div>
+          {% if entry.summary_line %}
+          <div class="tl-summary">{{ entry.summary_line }}</div>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+
+      {% if hist_entries %}
+      <details class="hist-context">
+        <summary><span class="arrow">&#9658;</span> Historical context ({{ hist_entries|length }})</summary>
+        <div class="hist-entries">
+          {% for entry in hist_entries %}
+          <div class="timeline-entry hist">
+            <div class="timeline-date">{{ entry.event_date | fmtdate }}</div>
+            <div class="timeline-content">
+              <div class="tl-title">{{ entry.title }}</div>
+              {% if entry.summary_line %}
+              <div class="tl-summary">{{ entry.summary_line }}</div>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </details>
+      {% endif %}
+    </div>
+  </details>
+</div>
+{% endfor %}
+
+<div style="border-top:1px solid var(--border); margin:0.5rem 0 1.5rem;"></div>
+{% endif %}
+
+{# ── Regional breakdown (from standalone events only) ── #}
 {% if events %}
   {% set rc = {} %}
   {% for e in events %}{% for r in e.regions %}{% if r in rc %}{% set _ = rc.update({r: rc[r]+1}) %}{% else %}{% set _ = rc.update({r: 1}) %}{% endif %}{% endfor %}{% endfor %}
   {% if rc %}
-  <div class="region-bar" style="margin-top:0.75rem;">
+  <div class="section-label">Events</div>
+  <div class="region-bar" style="margin-top:0;">
     {% for region, count in rc.items()|sort(attribute='1',reverse=true) %}
       <span class="rb">{{ region }} {{ count }}</span>
     {% endfor %}
@@ -55,7 +149,7 @@
 {# Divider #}
 <div style="border-top:1px solid var(--border); margin-bottom:1.5rem;"></div>
 
-{% if not events %}
+{% if not events and not stories %}
   <p style="color:var(--muted);">No events in this briefing.</p>
 {% endif %}
 
@@ -127,13 +221,6 @@
 <aside class="market-sidebar">
   <span class="mkt-header">Markets</span>
 
-  {% if market.summary %}
-  <details class="mkt-summary">
-    <summary>&#9658; Market Commentary</summary>
-    <p>{{ market.summary }}</p>
-  </details>
-  {% endif %}
-
   {% for idx in market.indices %}
   <div class="mkt-tile">
     <div class="mkt-name">{{ idx.flag }} {{ idx.name }}</div>
@@ -149,14 +236,39 @@
     <div class="mkt-chg {{ 'up' if idx.change >= 0 else 'down' }}">
       {{ '+' if idx.change >= 0 }}{{ "{:,.2f}".format(idx.change) }} ({{ '+' if idx.pct_change >= 0 }}{{ idx.pct_change }}%)
     </div>
-    {% if idx.commentary %}
-    <details class="mkt-tile-detail">
-      <summary>&#9658; Why</summary>
-      <p>{{ idx.commentary }}</p>
-    </details>
-    {% endif %}
   </div>
   {% endfor %}
+
+  {% if market.gainers or market.losers %}
+  <details class="sector-details">
+    <summary class="sector-toggle"><span class="arrow">&#9658;</span> Sectors</summary>
+    <div class="sector-body">
+      {% if market.gainers %}
+      <span class="mkt-header" style="margin-top:0.3rem;">Top Gainers</span>
+      {% for s in market.gainers %}
+      <div class="mkt-tile sector-tile gainer">
+        <div class="sector-row">
+          <span class="sector-name">{{ s.icon }} {{ s.name }}</span>
+          <span class="mkt-chg up">+{{ s.pct_change }}%</span>
+        </div>
+      </div>
+      {% endfor %}
+      {% endif %}
+
+      {% if market.losers %}
+      <span class="mkt-header" style="margin-top:0.5rem;">Top Losers</span>
+      {% for s in market.losers %}
+      <div class="mkt-tile sector-tile loser">
+        <div class="sector-row">
+          <span class="sector-name">{{ s.icon }} {{ s.name }}</span>
+          <span class="mkt-chg down">{{ s.pct_change }}%</span>
+        </div>
+      </div>
+      {% endfor %}
+      {% endif %}
+    </div>
+  </details>
+  {% endif %}
 </aside>
 {% endif %}
 
@@ -173,6 +285,16 @@ setInterval(function() {
   }).catch(() => {});
 }, 15000);
 {% endif %}
+
+function storyAction(url, actionId) {
+  fetch(url, {method:'POST'})
+    .then(function() {
+      var el = document.getElementById('action-' + actionId);
+      if (el) el.style.display = 'none';
+      setTimeout(function(){ location.reload(); }, 500);
+    })
+    .catch(function() { location.reload(); });
+}
 
 function triggerPipeline() {
   var btn = document.getElementById('triggerBtn');

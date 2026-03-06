@@ -12,18 +12,15 @@ logger = logging.getLogger(__name__)
 def _fetch_market_data(date_str: str) -> None:
     """Fetch market indices and save snapshot. Always runs independently."""
     try:
-        from market.fetcher import fetch_market_data
-        from ai.analyst import generate_market_summary
+        from market.fetcher import fetch_market_data, fetch_sector_data
         from storage.database import save_market_snapshot
 
         logger.info("Fetching market indices...")
         indices = fetch_market_data()
+        sectors = fetch_sector_data()
         if indices:
-            overall, per_index = generate_market_summary(indices)
-            for idx in indices:
-                idx["commentary"] = per_index.get(idx["symbol"], "")
-            save_market_snapshot(date_str, indices, overall)
-            logger.info("Market snapshot saved (%d indices)", len(indices))
+            save_market_snapshot(date_str, indices, "", sectors)
+            logger.info("Market snapshot saved (%d indices, %d sectors)", len(indices), len(sectors))
     except Exception as exc:
         logger.warning("Market data fetch failed (non-fatal): %s", exc)
 
@@ -113,6 +110,14 @@ def run_daily_pipeline() -> None:
                 if a["url"] in url_to_id
             ]
             db.link_articles_to_event(event_id, article_ids)
+
+        # 7b. Story linking — match events to ongoing stories
+        logger.info("Step 7/7: Linking events to stories...")
+        try:
+            from processing.story_linker import run_story_linking
+            run_story_linking(briefing_id, date_str)
+        except Exception as exc:
+            logger.warning("Story linking failed (non-fatal): %s", exc)
 
         db.mark_briefing_complete(briefing_id)
         logger.info("=== Briefing complete: %d events saved ===", len(analyses))

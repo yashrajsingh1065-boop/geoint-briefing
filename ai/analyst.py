@@ -181,6 +181,253 @@ def generate_market_summary(indices: list[dict]) -> tuple[str, dict]:
         return "", {}
 
 
+# ── Story Operations ──────────────────────────────────────────────────────────
+
+
+def match_event_to_stories(event_title: str, event_summary: str, story_candidates: list[dict]) -> dict:
+    """
+    Ask Claude whether an event matches any of the candidate stories.
+    Returns {"match": true/false, "story_id": N or null, "reason": "..."}.
+    """
+    try:
+        stories_text = "\n".join(
+            f"- Story ID {s['id']}: \"{s['title']}\" (last update: {s['last_event_date']})"
+            for s in story_candidates
+        )
+        prompt = f"""You are matching a new intelligence event to existing ongoing stories.
+
+New event:
+Title: {event_title}
+Summary: {event_summary}
+
+Active stories:
+{stories_text}
+
+Does this event belong to any of these stories? Consider: same conflict/crisis, same actors, same geopolitical thread.
+
+Respond with ONLY a JSON object:
+{{
+  "match": true/false,
+  "story_id": <story ID number or null>,
+  "reason": "one sentence explaining why it matches or doesn't"
+}}"""
+        raw = _call_claude(prompt)
+        return _parse_json_safe(raw)
+    except Exception as exc:
+        logger.warning("Story matching failed: %s", exc)
+        return {"match": False, "story_id": None, "reason": "matching failed"}
+
+
+def generate_story_update(story_title: str, current_narrative: str, new_event_title: str, new_event_summary: str) -> dict:
+    """
+    Generate an incremental narrative update and timeline summary for a story.
+    Returns {"narrative_addition": "...", "summary_line": "...", "urgency": N}.
+    """
+    try:
+        prompt = f"""You are updating an ongoing intelligence story with a new development.
+
+Story: "{story_title}"
+Current narrative so far:
+{current_narrative[-1500:] if len(current_narrative) > 1500 else current_narrative}
+
+New development:
+Title: {new_event_title}
+Details: {new_event_summary}
+
+Respond with ONLY a JSON object:
+{{
+  "narrative_addition": "2-3 sentences describing this new development and how it advances the story",
+  "summary_line": "one concise sentence for the timeline entry (what happened today)",
+  "urgency": N (1-5 assessment of the OVERALL story arc urgency now)
+}}"""
+        raw = _call_claude(prompt)
+        data = _parse_json_safe(raw)
+        data["urgency"] = max(1, min(5, int(data.get("urgency", 3))))
+        return data
+    except Exception as exc:
+        logger.warning("Story update generation failed: %s", exc)
+        return {
+            "narrative_addition": new_event_summary[:200],
+            "summary_line": new_event_title[:100],
+            "urgency": 3,
+        }
+
+
+def evaluate_new_story(event_title: str, event_summary: str, article_count: int) -> dict:
+    """
+    Ask Claude if an unmatched event warrants becoming a new live story.
+    Returns {"create_story": true/false, "story_title": "...", "narrative": "...", "urgency": N}.
+    """
+    try:
+        prompt = f"""You are a geopolitical intelligence analyst. A new event has appeared that doesn't match any ongoing story.
+
+Event: "{event_title}"
+Summary: {event_summary}
+Article count: {article_count}
+
+Should this become a new LIVE STORY to track over coming days/weeks? A live story is for:
+- Ongoing conflicts, wars, or crises
+- Diplomatic negotiations or standoffs
+- Escalating tensions between nations
+- Major political upheavals with uncertain outcomes
+
+Do NOT create a story for:
+- One-off events (natural disasters with no follow-up, completed elections, single incidents)
+- Routine diplomatic meetings
+- Economic data releases
+
+Respond with ONLY a JSON object:
+{{
+  "create_story": true/false,
+  "story_title": "short, clear title for the ongoing story (e.g., 'US-Iran Nuclear Standoff', 'Ukraine-Russia War')",
+  "narrative": "2-3 sentences setting up the story context and this first development",
+  "urgency": N (1-5)
+}}"""
+        raw = _call_claude(prompt)
+        data = _parse_json_safe(raw)
+        data["urgency"] = max(1, min(5, int(data.get("urgency", 3))))
+        return data
+    except Exception as exc:
+        logger.warning("New story evaluation failed: %s", exc)
+        return {"create_story": False, "story_title": "", "narrative": "", "urgency": 3}
+
+
+def check_story_closure(story_title: str, narrative: str, last_event_date: str, days_dormant: int) -> dict:
+    """
+    Ask Claude if a story should be closed.
+    Returns {"should_close": true/false, "reason": "..."}.
+    """
+    try:
+        prompt = f"""You are assessing whether an ongoing intelligence story has concluded.
+
+Story: "{story_title}"
+Last event: {last_event_date} ({days_dormant} days ago)
+Narrative:
+{narrative[-1000:] if len(narrative) > 1000 else narrative}
+
+Has this story likely concluded? Consider:
+- Has the conflict/crisis been resolved?
+- Have negotiations concluded?
+- Has the situation stabilized?
+- Or is it just a quiet period before more developments?
+
+Respond with ONLY a JSON object:
+{{
+  "should_close": true/false,
+  "reason": "one sentence explaining your assessment"
+}}"""
+        raw = _call_claude(prompt)
+        return _parse_json_safe(raw)
+    except Exception as exc:
+        logger.warning("Story closure check failed: %s", exc)
+        return {"should_close": False, "reason": "check failed"}
+
+
+def check_story_merges(stories: list[dict]) -> list[dict]:
+    """
+    Ask Claude if any active stories should be merged.
+    Returns list of {"source_id": N, "target_id": N, "reason": "..."}.
+    """
+    if len(stories) < 2:
+        return []
+    try:
+        stories_text = "\n".join(
+            f"- ID {s['id']}: \"{s['title']}\" (urgency: {s['urgency']}, last: {s['last_event_date']})"
+            for s in stories
+        )
+        prompt = f"""Review these active intelligence stories for potential merges.
+
+Active stories:
+{stories_text}
+
+Are any of these actually the SAME ongoing story that should be merged? Only suggest merging if they cover the exact same conflict/crisis/situation from different angles.
+
+Respond with ONLY a JSON object:
+{{
+  "merges": [
+    {{"source_id": N, "target_id": N, "reason": "one sentence"}}
+  ]
+}}
+
+Return an empty merges array if no merges are needed."""
+        raw = _call_claude(prompt)
+        data = _parse_json_safe(raw)
+        return data.get("merges", [])
+    except Exception as exc:
+        logger.warning("Story merge check failed: %s", exc)
+        return []
+
+
+def generate_historical_timeline(story_title: str, narrative: str) -> list[dict]:
+    """
+    Ask Claude to generate a historical timeline of key events for a new story.
+    Returns list of {"date": "YYYY-MM-DD", "headline": "...", "summary": "...", "type": "arc"|"historical"}.
+    """
+    try:
+        today = __import__('datetime').date.today().isoformat()
+        prompt = f"""You are a geopolitical intelligence analyst building a story timeline.
+
+Story: "{story_title}"
+Context: {narrative}
+Today: {today}
+
+Generate TWO sections:
+
+1. **STORY ARC** — The specific chain of events for THIS story:
+   - When exactly did this specific conflict/crisis/situation START?
+   - Who made the first move/attack/provocation?
+   - Each major escalation, response, or development in sequence
+   - Focus on the last few weeks/months — the active story arc
+   - 5-10 entries, chronological
+
+2. **HISTORICAL CONTEXT** — Deeper background that supports understanding:
+   - Key historical precedents relevant to this story
+   - Only 3-5 entries, the most important ones
+   - These are "good to know" context, not the active story
+
+Respond with ONLY a JSON object:
+{{
+  "arc": [
+    {{"date": "YYYY-MM-DD", "headline": "short headline", "summary": "one sentence"}},
+    ...
+  ],
+  "historical": [
+    {{"date": "YYYY-MM-DD", "headline": "short headline", "summary": "one sentence"}},
+    ...
+  ]
+}}
+
+IMPORTANT: Use accurate, real dates. Order each section from oldest to newest."""
+        raw = _call_claude(prompt)
+        data = _parse_json_safe(raw)
+
+        valid = []
+        for entry_type in ("arc", "historical"):
+            for e in data.get(entry_type, []):
+                if e.get("date") and e.get("headline"):
+                    valid.append({
+                        "date": str(e["date"])[:10],
+                        "headline": str(e["headline"])[:200],
+                        "summary": str(e.get("summary", ""))[:300],
+                        "type": entry_type,
+                    })
+        return valid
+    except Exception as exc:
+        logger.warning("Historical timeline generation failed: %s", exc)
+        return []
+
+
+def _parse_json_safe(raw: str) -> dict:
+    """Parse JSON from Claude response, handling markdown fences."""
+    text = raw.strip()
+    if text.startswith("```"):
+        text = text.split("```")[1]
+        if text.startswith("json"):
+            text = text[4:]
+        text = text.strip()
+    return json.loads(text)
+
+
 def analyze_all_events(clusters: list[dict]) -> list[dict]:
     """
     Analyze all event clusters sequentially.

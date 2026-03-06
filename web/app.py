@@ -12,9 +12,20 @@ TEMPLATES_DIR = Path(__file__).parent / "templates"
 logger = logging.getLogger(__name__)
 
 
+def _format_date(value: str) -> str:
+    """Convert YYYY-MM-DD to DD-Mon'YY (e.g., 06-Mar'26)."""
+    try:
+        from datetime import datetime as _dt
+        d = _dt.strptime(str(value)[:10], "%Y-%m-%d")
+        return d.strftime("%d-%b'%y")
+    except Exception:
+        return value
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="Geoint Briefing", docs_url=None, redoc_url=None)
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+    templates.env.filters["fmtdate"] = _format_date
 
     # ── Redirect root ──────────────────────────────────────────────────────────
 
@@ -26,7 +37,10 @@ def create_app() -> FastAPI:
 
     @app.get("/briefing/today", response_class=HTMLResponse)
     async def today_briefing(request: Request):
-        from storage.database import get_briefing_by_date, get_events_for_briefing, get_market_snapshot
+        from storage.database import (
+            get_briefing_by_date, get_events_for_briefing, get_market_snapshot,
+            get_active_stories_with_timelines, get_pending_actions, get_events_linked_to_stories,
+        )
         today = date.today().isoformat()
         briefing = get_briefing_by_date(today)
         market = get_market_snapshot(today)
@@ -34,12 +48,20 @@ def create_app() -> FastAPI:
         if briefing is None:
             return templates.TemplateResponse(
                 "dashboard.html",
-                {"request": request, "briefing": None, "events": [], "date": today, "status": "none", "market": market},
+                {"request": request, "briefing": None, "events": [], "date": today,
+                 "status": "none", "market": market, "stories": [], "actions": []},
             )
 
         events = []
+        stories = []
+        actions = []
         if briefing["status"] == "complete":
             events = get_events_for_briefing(briefing["id"])
+            stories = get_active_stories_with_timelines()
+            actions = get_pending_actions()
+            # Filter out events that are part of stories (they show in the story timeline)
+            story_event_ids = get_events_linked_to_stories(briefing["id"])
+            events = [e for e in events if e["id"] not in story_event_ids]
 
         return templates.TemplateResponse(
             "dashboard.html",
@@ -50,6 +72,8 @@ def create_app() -> FastAPI:
                 "date":     today,
                 "status":   briefing["status"],
                 "market":   market,
+                "stories":  stories,
+                "actions":  actions,
             },
         )
 
@@ -57,19 +81,29 @@ def create_app() -> FastAPI:
 
     @app.get("/briefing/{date_str}", response_class=HTMLResponse)
     async def briefing_by_date(request: Request, date_str: str):
-        from storage.database import get_briefing_by_date, get_events_for_briefing, get_market_snapshot
+        from storage.database import (
+            get_briefing_by_date, get_events_for_briefing, get_market_snapshot,
+            get_active_stories_with_timelines, get_pending_actions, get_events_linked_to_stories,
+        )
         briefing = get_briefing_by_date(date_str)
         market = get_market_snapshot(date_str)
 
         if briefing is None:
             return templates.TemplateResponse(
                 "dashboard.html",
-                {"request": request, "briefing": None, "events": [], "date": date_str, "status": "none", "market": market},
+                {"request": request, "briefing": None, "events": [], "date": date_str,
+                 "status": "none", "market": market, "stories": [], "actions": []},
             )
 
         events = []
+        stories = []
+        actions = []
         if briefing["status"] == "complete":
             events = get_events_for_briefing(briefing["id"])
+            stories = get_active_stories_with_timelines()
+            actions = get_pending_actions()
+            story_event_ids = get_events_linked_to_stories(briefing["id"])
+            events = [e for e in events if e["id"] not in story_event_ids]
 
         return templates.TemplateResponse(
             "dashboard.html",
@@ -80,6 +114,8 @@ def create_app() -> FastAPI:
                 "date":     date_str,
                 "status":   briefing["status"],
                 "market":   market,
+                "stories":  stories,
+                "actions":  actions,
             },
         )
 
@@ -101,11 +137,12 @@ def create_app() -> FastAPI:
 
     @app.get("/history", response_class=HTMLResponse)
     async def history(request: Request):
-        from storage.database import list_briefing_dates
+        from storage.database import list_briefing_dates, get_closed_stories
         entries = list_briefing_dates()
+        closed_stories = get_closed_stories()
         return templates.TemplateResponse(
             "history.html",
-            {"request": request, "entries": entries},
+            {"request": request, "entries": entries, "closed_stories": closed_stories},
         )
 
     # ── API: status ────────────────────────────────────────────────────────────
@@ -137,6 +174,40 @@ def create_app() -> FastAPI:
         t = threading.Thread(target=run_daily_pipeline, daemon=True, name="manual-pipeline")
         t.start()
         return JSONResponse({"status": "started"})
+
+    # ── API: story actions ──────────────────────────────────────────────────────
+
+    @app.post("/api/story/{story_id}/close")
+    async def approve_close_story(story_id: int):
+        from storage.database import close_story, resolve_story_action
+        close_story(story_id)
+        # Resolve any pending close actions for this story
+        from storage.database import get_pending_actions
+        for action in get_pending_actions():
+            if action["story_id"] == story_id and action["action_type"] == "close":
+                resolve_story_action(action["id"], "approved")
+        return JSONResponse({"status": "closed", "story_id": story_id})
+
+    @app.post("/api/story/action/{action_id}/dismiss")
+    async def dismiss_action(action_id: int):
+        from storage.database import resolve_story_action
+        resolve_story_action(action_id, "dismissed")
+        return JSONResponse({"status": "dismissed", "action_id": action_id})
+
+    @app.post("/api/story/action/{action_id}/approve-merge")
+    async def approve_merge(action_id: int):
+        from storage.database import resolve_story_action, merge_stories
+        from storage.database import _connect
+        with _connect() as conn:
+            row = conn.execute("SELECT * FROM story_actions WHERE id = ?", (action_id,)).fetchone()
+        if not row:
+            return JSONResponse({"error": "action not found"}, status_code=404)
+        action = dict(row)
+        if action["action_type"] != "merge" or not action.get("merge_target_id"):
+            return JSONResponse({"error": "not a merge action"}, status_code=400)
+        merge_stories(action["story_id"], action["merge_target_id"])
+        resolve_story_action(action_id, "approved")
+        return JSONResponse({"status": "merged", "source": action["story_id"], "target": action["merge_target_id"]})
 
     # ── API: market snapshot debug ─────────────────────────────────────────────
 
