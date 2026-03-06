@@ -118,16 +118,15 @@ def _fetch_symbols(session, crumb, symbols_meta, extra_keys=None):
     return results
 
 
-def _fetch_spark(session: requests.Session, crumb: str, symbols: list[str]) -> dict:
-    """Fetch multiple symbols in one request via Yahoo spark endpoint."""
+def _fetch_quotes_batch(session: requests.Session, crumb: str, symbols: list[str]) -> dict:
+    """Fetch multiple symbols via Yahoo v7 quote endpoint (single request)."""
     try:
-        url = "https://query2.finance.yahoo.com/v8/finance/spark"
+        url = "https://query2.finance.yahoo.com/v7/finance/quote"
         resp = session.get(
             url,
             params={
                 "symbols": ",".join(symbols),
-                "range": "5d",
-                "interval": "1d",
+                "fields": "regularMarketPrice,regularMarketChange,regularMarketChangePercent,regularMarketPreviousClose",
                 "crumb": crumb,
             },
             timeout=15,
@@ -135,15 +134,15 @@ def _fetch_spark(session: requests.Session, crumb: str, symbols: list[str]) -> d
         resp.raise_for_status()
         data = resp.json()
         results = {}
-        for item in data.get("spark", {}).get("result", []):
+        for item in data.get("quoteResponse", {}).get("result", []):
             sym = item.get("symbol")
-            closes = item.get("response", [{}])[0].get("indicators", {}).get("quote", [{}])[0].get("close", [])
-            closes = [c for c in closes if c is not None]
-            if len(closes) >= 2:
-                results[sym] = {"prev": closes[-2], "latest": closes[-1]}
+            price = item.get("regularMarketPrice")
+            prev = item.get("regularMarketPreviousClose")
+            if price and prev:
+                results[sym] = {"prev": prev, "latest": price}
         return results
     except Exception as exc:
-        logger.warning("Spark fetch failed: %s", exc)
+        logger.warning("Batch quote fetch failed: %s", exc)
         return {}
 
 
@@ -158,13 +157,12 @@ def fetch_all_market_data() -> tuple[list[dict], list[dict]]:
         logger.warning("Could not initialise Yahoo Finance session")
         return [], []
 
-    # Fetch all symbols in two batch requests (indices + sectors)
-    index_symbols = [m["symbol"] for m in _INDICES]
-    sector_symbols = [m["symbol"] for m in _SECTORS]
+    # Fetch ALL symbols in one batch request
+    all_symbols = [m["symbol"] for m in _INDICES] + [m["symbol"] for m in _SECTORS]
+    all_prices = _fetch_quotes_batch(session, crumb, all_symbols)
 
-    index_prices = _fetch_spark(session, crumb, index_symbols)
-    time.sleep(1)
-    sector_prices = _fetch_spark(session, crumb, sector_symbols)
+    index_prices = {s: all_prices[s] for s in [m["symbol"] for m in _INDICES] if s in all_prices}
+    sector_prices = {s: all_prices[s] for s in [m["symbol"] for m in _SECTORS] if s in all_prices}
 
     # If spark failed, fall back to individual fetches
     if not index_prices:
