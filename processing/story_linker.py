@@ -73,6 +73,15 @@ def run_story_linking(briefing_id: int, date_str: str) -> None:
         logger.info("No events to link — skipping.")
         return
 
+    # Skip events already linked to stories (never alter existing links)
+    already_linked = db.get_events_linked_to_stories(briefing_id)
+    events = [e for e in events if e["id"] not in already_linked]
+
+    if not events:
+        logger.info("All events already linked — skipping matching.")
+        # Still check dormant/merge below
+        events = []
+
     linked_event_ids = set()
 
     # Step 1: Match events to existing stories

@@ -209,6 +209,37 @@ def create_app() -> FastAPI:
         resolve_story_action(action_id, "approved")
         return JSONResponse({"status": "merged", "source": action["story_id"], "target": action["merge_target_id"]})
 
+    # ── API: resync stories + sectors on existing briefing ──────────────────────
+
+    @app.post("/api/resync")
+    async def resync():
+        def _run():
+            from storage.database import get_briefing_by_date
+            from datetime import date as _date
+            date_str = _date.today().isoformat()
+            briefing = get_briefing_by_date(date_str)
+            if not briefing or briefing["status"] != "complete":
+                return
+            # Story linking (builds on top, never alters existing links)
+            try:
+                from processing.story_linker import run_story_linking
+                run_story_linking(briefing["id"], date_str)
+            except Exception:
+                pass
+            # Sector + market refresh
+            try:
+                from market.fetcher import fetch_market_data, fetch_sector_data
+                from storage.database import save_market_snapshot, get_market_snapshot
+                existing = get_market_snapshot(date_str)
+                indices = existing["indices"] if existing else fetch_market_data()
+                sectors = fetch_sector_data()
+                save_market_snapshot(date_str, indices, "", sectors)
+            except Exception:
+                pass
+        t = threading.Thread(target=_run, daemon=True, name="resync")
+        t.start()
+        return JSONResponse({"status": "resync_started"})
+
     # ── API: market snapshot debug ─────────────────────────────────────────────
 
     @app.get("/api/market")
