@@ -118,6 +118,43 @@ def _fetch_symbols(session, crumb, symbols_meta, extra_keys=None):
     return results
 
 
+def _fetch_google_finance(symbols_meta: list[dict]) -> dict:
+    """Fallback: scrape Google Finance for price + change data."""
+    import re
+    results = {}
+    session = requests.Session()
+    session.headers.update({"User-Agent": _HEADERS["User-Agent"]})
+
+    for meta in symbols_meta:
+        sym = meta["symbol"].lstrip("^")
+        # Map to Google Finance ticker format
+        exchange = "NYSEARCA"
+        if meta["symbol"].startswith("^"):
+            exchange = "INDEXSP" if "GSPC" in meta["symbol"] else \
+                       "INDEXDJX" if "DJI" in meta["symbol"] else \
+                       "INDEXFTSE" if "FTSE" in meta["symbol"] else \
+                       "INDEXNIKKEI" if "N225" in meta["symbol"] else \
+                       "INDEXDB" if "GDAXI" in meta["symbol"] else \
+                       "INDEXBOM" if "BSESN" in meta["symbol"] else \
+                       "INDEXNSE" if "NSEI" in meta["symbol"] else "NYSEARCA"
+            sym = {"GSPC": "SPX", "DJI": "DJI", "FTSE": "UKX", "N225": "NI225",
+                   "GDAXI": "DAX", "BSESN": "SENSEX", "NSEI": "NIFTY_50"}.get(sym, sym)
+        try:
+            url = f"https://www.google.com/finance/quote/{sym}:{exchange}"
+            resp = session.get(url, timeout=10)
+            price_match = re.search(r'data-last-price="([^"]+)"', resp.text)
+            change_match = re.search(r'data-last-normal-market-change-percent="([^"]+)"', resp.text)
+            prev_match = re.search(r'data-last-close-price="([^"]+)"', resp.text)
+            if price_match:
+                latest = float(price_match.group(1))
+                prev = float(prev_match.group(1)) if prev_match else latest
+                results[meta["symbol"]] = {"prev": prev, "latest": latest}
+        except Exception as exc:
+            logger.warning("Google Finance failed for %s: %s", meta["symbol"], exc)
+        time.sleep(0.3)
+    return results
+
+
 def _fetch_quotes_batch(session: requests.Session, crumb: str, symbols: list[str]) -> dict:
     """Fetch multiple symbols via Yahoo v7 quote endpoint (single request)."""
     try:
@@ -164,22 +201,25 @@ def fetch_all_market_data() -> tuple[list[dict], list[dict]]:
     index_prices = {s: all_prices[s] for s in [m["symbol"] for m in _INDICES] if s in all_prices}
     sector_prices = {s: all_prices[s] for s in [m["symbol"] for m in _SECTORS] if s in all_prices}
 
-    # If spark failed, fall back to individual fetches
+    # Fallback: individual Yahoo fetches
     if not index_prices:
-        index_prices = {}
         for meta in _INDICES:
             p = _fetch_symbol(session, crumb, meta["symbol"])
             if p:
                 index_prices[meta["symbol"]] = p
             time.sleep(0.5)
 
+    # Fallback for sectors: try individual Yahoo, then Google Finance
     if not sector_prices:
-        sector_prices = {}
         for meta in _SECTORS:
             p = _fetch_symbol(session, crumb, meta["symbol"])
             if p:
                 sector_prices[meta["symbol"]] = p
             time.sleep(0.5)
+
+    if not sector_prices:
+        logger.info("Yahoo failed for sectors, trying Google Finance fallback...")
+        sector_prices = _fetch_google_finance(_SECTORS)
 
     def _build_results(meta_list, prices, extra_keys):
         results = []
