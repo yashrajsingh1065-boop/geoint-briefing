@@ -13,13 +13,13 @@
     :root {
       --bg:          #020617;
       --surface:     #0f1629;
-      --surface2:    #1a2035;
+      --surface2:    #1e2540;
       --surface3:    #232940;
       --border:      #1e293b;
       --border2:     #334155;
       --text:        #f1f5f9;
       --text2:       #cbd5e1;
-      --muted:       #64748b;
+      --muted:       #7c8ba5;
       --accent:      #3b82f6;
       --accent2:     #60a5fa;
 
@@ -34,6 +34,15 @@
 
       --radius: 6px;
       --radius-lg: 10px;
+
+      /* Type scale */
+      --text-xs:   0.62rem;
+      --text-sm:   0.75rem;
+      --text-base: 0.85rem;
+      --text-md:   0.95rem;
+      --text-lg:   1.05rem;
+      --text-xl:   1.25rem;
+      --text-2xl:  1.4rem;
     }
 
     html { font-size: 15px; }
@@ -50,6 +59,11 @@
 
     a { color: var(--accent2); text-decoration: none; transition: color 0.15s; }
     a:hover { color: var(--text); }
+
+    :focus-visible {
+      outline: 2px solid var(--accent2);
+      outline-offset: 2px;
+    }
 
     .container { max-width: 860px; margin: 0 auto; padding: 0 1.5rem; }
     .container.wide { max-width: 1240px; }
@@ -73,7 +87,7 @@
     }
     .site-nav .brand {
       font-family: var(--font-mono);
-      font-size: 0.8rem;
+      font-size: var(--text-base);
       font-weight: 600;
       letter-spacing: 0.12em;
       text-transform: uppercase;
@@ -92,7 +106,7 @@
     }
     .site-nav .nav-links { display: flex; gap: 1.5rem; }
     .site-nav .nav-links a {
-      font-size: 0.78rem;
+      font-size: var(--text-sm);
       font-weight: 500;
       color: var(--muted);
       letter-spacing: 0.03em;
@@ -106,7 +120,7 @@
       padding: 2px 8px;
       border-radius: 3px;
       font-family: var(--font-mono);
-      font-size: 0.6rem;
+      font-size: var(--text-xs);
       font-weight: 600;
       letter-spacing: 0.1em;
       text-transform: uppercase;
@@ -122,12 +136,13 @@
       display: inline-block;
       padding: 2px 7px;
       border-radius: 3px;
-      font-size: 0.62rem;
+      font-size: var(--text-xs);
       font-weight: 500;
       letter-spacing: 0.02em;
       background: var(--surface2);
       color: var(--muted);
       border: 1px solid var(--border);
+      cursor: default;
     }
 
     /* ── Event card ── */
@@ -137,10 +152,10 @@
       border-left: 3px solid var(--border);
       border-radius: var(--radius-lg);
       padding: 1.15rem 1.3rem;
-      margin-bottom: 0.75rem;
-      transition: border-color 0.2s, background 0.2s;
+      margin-bottom: 1.1rem;
+      transition: border-color 0.2s;
+      animation: card-fade-in 0.4s ease both;
     }
-    .event-card:hover { background: var(--surface2); border-color: var(--border2); }
     .event-card.u5 { border-left-color: var(--u5); }
     .event-card.u4 { border-left-color: var(--u4); }
     .event-card.u3 { border-left-color: var(--u3); }
@@ -156,7 +171,7 @@
     }
 
     .card-title {
-      font-size: 1rem;
+      font-size: var(--text-md);
       font-weight: 600;
       line-height: 1.45;
       color: var(--text);
@@ -166,7 +181,7 @@
     .card-title a:hover { color: var(--accent2); }
 
     .card-sources {
-      font-size: 0.72rem;
+      font-size: var(--text-sm);
       color: var(--muted);
       margin-bottom: 0.6rem;
       font-family: var(--font-mono);
@@ -181,7 +196,7 @@
       display: inline-flex;
       align-items: center;
       gap: 0.35rem;
-      font-size: 0.72rem;
+      font-size: var(--text-sm);
       font-weight: 600;
       color: var(--accent2);
       padding: 3px 10px;
@@ -193,7 +208,7 @@
     }
     details.analysis > summary::-webkit-details-marker { display: none; }
     details.analysis > summary:hover { background: rgba(59,130,246,0.1); }
-    details.analysis > summary .arrow { font-size: 0.55rem; transition: transform 0.2s; }
+    details.analysis > summary .arrow { font-size: 0.65rem; transition: transform 0.2s; }
     details.analysis[open] > summary .arrow { transform: rotate(90deg); }
 
     .analysis-body {
@@ -202,13 +217,13 @@
       background: var(--surface2);
       border-radius: var(--radius);
       border: 1px solid var(--border);
-      font-size: 0.85rem;
+      font-size: var(--text-base);
       line-height: 1.7;
       color: var(--text2);
     }
     .analysis-body h4 {
       font-family: var(--font-mono);
-      font-size: 0.62rem;
+      font-size: var(--text-xs);
       font-weight: 600;
       letter-spacing: 0.12em;
       text-transform: uppercase;
@@ -223,8 +238,8 @@
       padding: 5rem 1rem;
       color: var(--muted);
     }
-    .state-box h2 { color: var(--text); font-size: 1.2rem; font-weight: 600; margin-bottom: 0.6rem; }
-    .state-box p { margin-bottom: 1.2rem; font-size: 0.88rem; }
+    .state-box h2 { color: var(--text); font-size: var(--text-xl); font-weight: 600; margin-bottom: 0.6rem; }
+    .state-box p { margin-bottom: 1.2rem; font-size: var(--text-base); }
     .state-box progress {
       width: 200px;
       appearance: none;
@@ -242,7 +257,7 @@
       display: inline-block;
       padding: 0.45rem 1.1rem;
       border-radius: var(--radius);
-      font-size: 0.8rem;
+      font-size: var(--text-base);
       font-weight: 600;
       cursor: pointer;
       border: 1px solid var(--accent);
@@ -262,7 +277,7 @@
     }
     .region-bar .rb {
       font-family: var(--font-mono);
-      font-size: 0.62rem;
+      font-size: var(--text-xs);
       padding: 2px 8px;
       border-radius: 3px;
       background: var(--surface2);
@@ -279,21 +294,57 @@
       gap: 0.5rem;
       margin-bottom: 0.5rem;
     }
-    .page-header h1 { font-size: 1.25rem; font-weight: 700; color: var(--text); letter-spacing: -0.01em; }
+    .page-header h1 { font-size: var(--text-xl); font-weight: 700; color: var(--text); letter-spacing: -0.01em; }
+    .page-subtitle {
+      font-size: var(--text-sm);
+      color: var(--muted);
+      margin-top: 0.15rem;
+    }
     .page-meta {
       font-family: var(--font-mono);
-      font-size: 0.72rem;
+      font-size: var(--text-sm);
       color: var(--muted);
     }
 
+    /* ── Urgency legend ── */
+    .urgency-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin: 0.5rem 0 0.75rem;
+    }
+
+    /* ── Filter bar ── */
+    .filter-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-bottom: 1.25rem;
+    }
+    .filter-chip {
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--muted);
+      transition: all 0.15s;
+    }
+    .filter-chip:hover { background: var(--surface2); color: var(--text2); }
+    .filter-chip.active { background: rgba(59,130,246,0.15); color: var(--accent2); border-color: rgba(59,130,246,0.3); }
+
     /* ── Table ── */
-    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    table { width: 100%; border-collapse: collapse; font-size: var(--text-base); }
     th {
       text-align: left;
       padding: 0.5rem 0.75rem;
       color: var(--muted);
       font-family: var(--font-mono);
-      font-size: 0.62rem;
+      font-size: var(--text-xs);
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.08em;
@@ -329,7 +380,7 @@
 
     .mkt-name {
       font-family: var(--font-mono);
-      font-size: 0.65rem;
+      font-size: var(--text-xs);
       font-weight: 500;
       color: var(--muted);
       letter-spacing: 0.02em;
@@ -338,7 +389,7 @@
 
     .mkt-val {
       font-family: var(--font-mono);
-      font-size: 0.95rem;
+      font-size: var(--text-md);
       font-weight: 600;
       color: var(--text);
       margin-bottom: 0.1rem;
@@ -346,7 +397,7 @@
 
     .mkt-chg {
       font-family: var(--font-mono);
-      font-size: 0.68rem;
+      font-size: var(--text-sm);
       font-weight: 600;
       display: inline-block;
       padding: 1px 6px;
@@ -368,7 +419,7 @@
       align-items: center;
       gap: 0.35rem;
       font-family: var(--font-mono);
-      font-size: 0.65rem;
+      font-size: var(--text-xs);
       font-weight: 600;
       letter-spacing: 0.08em;
       text-transform: uppercase;
@@ -379,7 +430,7 @@
     }
     .sector-toggle::-webkit-details-marker { display: none; }
     .sector-toggle:hover { background: var(--surface2); }
-    .sector-toggle .arrow { font-size: 0.5rem; transition: transform 0.2s; }
+    .sector-toggle .arrow { font-size: 0.65rem; transition: transform 0.2s; }
     .sector-details[open] .sector-toggle .arrow { transform: rotate(90deg); }
     .sector-body {
       display: flex;
@@ -397,7 +448,7 @@
       align-items: center;
     }
     .sector-name {
-      font-size: 0.75rem;
+      font-size: var(--text-sm);
       color: var(--text2);
     }
     .sector-tile.gainer { border-left: 2px solid rgba(34,197,94,0.4); }
@@ -405,7 +456,7 @@
 
     .mkt-header {
       font-family: var(--font-mono);
-      font-size: 0.6rem;
+      font-size: var(--text-xs);
       font-weight: 600;
       letter-spacing: 0.12em;
       text-transform: uppercase;
@@ -420,49 +471,50 @@
       border-left: 3px solid var(--accent);
       border-radius: var(--radius-lg);
       padding: 1.15rem 1.3rem;
-      margin-bottom: 0.75rem;
+      margin-bottom: 1.1rem;
       position: relative;
-      transition: background 0.2s;
+      transition: border-color 0.2s;
+      animation: card-fade-in 0.4s ease both;
     }
-    .story-card:hover { background: var(--surface2); }
     .story-card.u5 { border-left-color: var(--u5); }
     .story-card.u4 { border-left-color: var(--u4); }
     .story-card.u3 { border-left-color: var(--u3); }
     .story-card.u2 { border-left-color: var(--u2); }
     .story-card.u1 { border-left-color: var(--u1); }
 
-    .story-card .live-badge {
+    /* ── Ongoing badge (green, replaces live-badge) ── */
+    .ongoing-badge {
       display: inline-flex;
       align-items: center;
       gap: 0.3rem;
       padding: 2px 8px;
       border-radius: 3px;
       font-family: var(--font-mono);
-      font-size: 0.58rem;
+      font-size: var(--text-xs);
       font-weight: 600;
       letter-spacing: 0.1em;
       text-transform: uppercase;
-      background: rgba(239,68,68,0.1);
-      color: #ef4444;
-      border: 1px solid rgba(239,68,68,0.25);
+      background: rgba(34,197,94,0.1);
+      color: #22c55e;
+      border: 1px solid rgba(34,197,94,0.25);
     }
-    .live-badge::before {
+    .ongoing-badge::before {
       content: "";
       display: inline-block;
       width: 5px;
       height: 5px;
       border-radius: 50%;
-      background: #ef4444;
+      background: #22c55e;
       animation: pulse-dot 1.5s ease-in-out infinite;
     }
 
     @keyframes pulse-dot {
-      0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
-      50% { opacity: 0.7; box-shadow: 0 0 0 4px rgba(239,68,68,0); }
+      0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34,197,94,0.4); }
+      50% { opacity: 0.7; box-shadow: 0 0 0 4px rgba(34,197,94,0); }
     }
 
     .story-title {
-      font-size: 1.05rem;
+      font-size: var(--text-lg);
       font-weight: 700;
       color: var(--text);
       margin: 0.5rem 0 0.35rem;
@@ -474,6 +526,16 @@
     .story-timeline {
       margin-top: 0.65rem;
       padding: 0;
+      position: relative;
+    }
+    .story-timeline::before {
+      content: "";
+      position: absolute;
+      left: 6px;
+      top: 0.75rem;
+      bottom: 0.75rem;
+      width: 1px;
+      background: var(--border);
     }
 
     .timeline-entry {
@@ -488,7 +550,7 @@
 
     .timeline-date {
       font-family: var(--font-mono);
-      font-size: 0.65rem;
+      font-size: var(--text-xs);
       font-weight: 500;
       color: var(--muted);
       padding-top: 2px;
@@ -505,10 +567,11 @@
       height: 5px;
       border-radius: 50%;
       background: var(--accent);
+      z-index: 1;
     }
 
     .timeline-content {
-      font-size: 0.82rem;
+      font-size: var(--text-base);
       line-height: 1.5;
     }
     .timeline-content .tl-title {
@@ -519,15 +582,24 @@
     .timeline-content .tl-title a:hover { color: var(--accent2); }
     .timeline-content .tl-summary {
       color: var(--muted);
-      font-size: 0.75rem;
+      font-size: var(--text-sm);
       margin-top: 0.15rem;
       line-height: 1.45;
+    }
+
+    /* ── Show all hint ── */
+    .show-all-hint {
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      color: var(--accent2);
+      padding: 0.5rem 0 0.25rem 14px;
+      cursor: default;
     }
 
     /* ── Section labels ── */
     .section-label {
       font-family: var(--font-mono);
-      font-size: 0.6rem;
+      font-size: var(--text-xs);
       font-weight: 600;
       letter-spacing: 0.12em;
       text-transform: uppercase;
@@ -551,12 +623,12 @@
       flex-wrap: wrap;
     }
     .action-banner .action-text {
-      font-size: 0.8rem;
+      font-size: var(--text-base);
       color: var(--text2);
       line-height: 1.5;
     }
     .action-banner .action-reason {
-      font-size: 0.72rem;
+      font-size: var(--text-sm);
       color: var(--muted);
       margin-top: 0.15rem;
     }
@@ -568,7 +640,7 @@
     .btn-sm {
       padding: 4px 12px;
       border-radius: var(--radius);
-      font-size: 0.72rem;
+      font-size: var(--text-sm);
       font-weight: 600;
       cursor: pointer;
       border: 1px solid var(--border);
@@ -580,6 +652,9 @@
     .btn-sm.approve { border-color: rgba(34,197,94,0.3); color: #22c55e; background: rgba(34,197,94,0.06); }
     .btn-sm.approve:hover { background: rgba(34,197,94,0.12); }
     .btn-sm.dismiss { border-color: rgba(100,116,139,0.3); color: var(--muted); }
+
+    /* ── Admin section ── */
+    .admin-section { display: none; }
 
     /* ── Historical context (nested collapsible) ── */
     .hist-context {
@@ -594,7 +669,7 @@
       align-items: center;
       gap: 0.3rem;
       font-family: var(--font-mono);
-      font-size: 0.62rem;
+      font-size: var(--text-xs);
       font-weight: 600;
       color: var(--muted);
       padding: 3px 8px;
@@ -603,10 +678,11 @@
       background: var(--surface);
       user-select: none;
       letter-spacing: 0.03em;
+      transition: background 0.15s;
     }
     .hist-context > summary::-webkit-details-marker { display: none; }
     .hist-context > summary:hover { background: var(--surface2); }
-    .hist-context > summary .arrow { font-size: 0.5rem; transition: transform 0.2s; }
+    .hist-context > summary .arrow { font-size: 0.65rem; transition: transform 0.2s; }
     .hist-context[open] > summary .arrow { transform: rotate(90deg); }
 
     .hist-entries {
@@ -626,12 +702,6 @@
     }
 
     /* ── Low-coverage (under-reported) story ── */
-    .lc-label {
-      color: #eab308;
-      font-size: 0.6rem;
-      margin-left: 0.35rem;
-    }
-
     .lc-badge {
       display: inline-flex;
       align-items: center;
@@ -639,7 +709,7 @@
       padding: 2px 8px;
       border-radius: 3px;
       font-family: var(--font-mono);
-      font-size: 0.58rem;
+      font-size: var(--text-xs);
       font-weight: 600;
       letter-spacing: 0.1em;
       text-transform: uppercase;
@@ -674,14 +744,14 @@
       border: 1px solid var(--border);
       border-radius: var(--radius-lg);
       padding: 1.15rem 1.3rem;
-      margin-bottom: 0.75rem;
+      margin-bottom: 1.1rem;
     }
     .concluded-badge {
       display: inline-block;
       padding: 2px 8px;
       border-radius: 3px;
       font-family: var(--font-mono);
-      font-size: 0.58rem;
+      font-size: var(--text-xs);
       font-weight: 600;
       letter-spacing: 0.1em;
       text-transform: uppercase;
@@ -701,17 +771,20 @@
       align-items: center;
       gap: 0.5rem;
       font-family: var(--font-mono);
-      font-size: 0.62rem;
+      font-size: var(--text-xs);
       font-weight: 700;
       letter-spacing: 0.12em;
       text-transform: uppercase;
       color: var(--muted);
       padding: 0.5rem 0;
       user-select: none;
+      transition: background 0.15s;
+      border-radius: var(--radius);
     }
     .stories-collapsible > summary::-webkit-details-marker { display: none; }
+    .stories-collapsible > summary:hover { background: var(--surface); }
     .stories-collapsible > summary .arrow {
-      font-size: 0.5rem;
+      font-size: 0.65rem;
       transition: transform 0.2s;
     }
     .stories-collapsible[open] > summary .arrow {
@@ -720,6 +793,7 @@
     .stories-body {
       margin-top: 0.5rem;
     }
+
     /* ── Divider ── */
     .divider {
       border: none;
@@ -727,12 +801,41 @@
       margin: 0.5rem 0 1.25rem;
     }
 
+    /* ── Footer ── */
+    .site-footer {
+      border-top: 1px solid var(--border);
+      margin-top: 3rem;
+      padding: 1.5rem 0;
+      text-align: center;
+      font-size: var(--text-xs);
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    /* ── Card entry animation ── */
+    @keyframes card-fade-in {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Expand arrow hover ── */
+    summary:hover { background: var(--surface); border-radius: var(--radius); }
+
     /* ── Reduced motion ── */
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after {
         animation-duration: 0.01ms !important;
         transition-duration: 0.01ms !important;
       }
+    }
+
+    /* ── Print ── */
+    @media print {
+      .site-nav, .market-sidebar, .filter-bar, .urgency-legend, .site-footer, .admin-section, .action-banner, .btn, .btn-sm { display: none !important; }
+      .dash-layout { grid-template-columns: 1fr; }
+      body { background: #fff; color: #000; }
+      .event-card, .story-card { break-inside: avoid; border-color: #ccc; background: #fff; }
+      a { color: #000; }
     }
 
     /* ── Responsive ── */
@@ -768,9 +871,15 @@
     </div>
   </nav>
 
-  <div class="container {% block container_class %}{% endblock %}">
+  <main class="container {% block container_class %}{% endblock %}">
     {% block content %}{% endblock %}
-  </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      Events are clustered from 20+ RSS feeds and news APIs, deduplicated via semantic embeddings, and analysed by Claude AI. Market data via Yahoo Finance.
+    </div>
+  </footer>
 
 {% block scripts %}{% endblock %}
 </body>

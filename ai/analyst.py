@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-import time
 
 from claude_toolkit.client import get_client, get_config
 from claude_toolkit.cache import cacheable_system
@@ -117,64 +116,6 @@ def _fallback_result(cluster: dict) -> dict:
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
-
-def analyze_event(cluster: dict) -> dict:
-    """
-    Analyze one event cluster with Claude.
-    Never raises — returns a fallback result on any error.
-    """
-    try:
-        prompt = _build_prompt(cluster)
-        raw = _call_claude(prompt)
-        result = _parse_response(raw)
-        logger.debug("Analyzed: %s (urgency %s)", result.get("title"), result.get("urgency"))
-        return result
-    except Exception as exc:
-        lead_title = cluster.get("lead_article", {}).get("title", "?")[:50]
-        logger.warning("Claude analysis failed for '%s': %s", lead_title, type(exc).__name__)
-        return _fallback_result(cluster)
-
-
-def generate_market_summary(indices: list[dict]) -> tuple[str, dict]:
-    """
-    Generate an overall market commentary and one-sentence commentary per index.
-    Returns (overall_summary, {symbol: commentary}) — empty strings on failure.
-    """
-    try:
-        lines = []
-        for idx in indices:
-            sign = "+" if idx["change"] >= 0 else ""
-            lines.append(
-                f"{idx['name']} ({idx['symbol']}): {idx['value']:,.2f} "
-                f"{sign}{idx['change']} ({sign}{idx['pct_change']}%)"
-            )
-        index_text = "\n".join(lines)
-
-        client = get_client(_PROJECT)
-        cfg = get_config(_PROJECT)
-        tracker = get_tracker(_PROJECT)
-        _market_system = cacheable_system(
-            "You are a financial analyst. Given index data, return a JSON object with two keys:\n"
-            "1. \"overall\": a 3-4 sentence market commentary covering the global picture.\n"
-            "2. \"per_index\": an object mapping each symbol to a single concise sentence "
-            "explaining the key driver behind that index's move today.\n"
-            "Return only valid JSON, no markdown fences."
-        )
-        response = client.messages.create(
-            model=cfg.model,
-            max_tokens=800,
-            temperature=0.4,
-            system=_market_system,
-            messages=[{"role": "user", "content": index_text}],
-        )
-        tracker.record(response)
-        data = _parse_json_safe(response.content[0].text.strip())
-        overall = data.get("overall", "")
-        per_index = data.get("per_index", {})
-        return overall, per_index
-    except Exception as exc:
-        logger.warning("Market summary generation failed: %s", type(exc).__name__)
-        return "", {}
 
 
 # ── Story Operations ──────────────────────────────────────────────────────────

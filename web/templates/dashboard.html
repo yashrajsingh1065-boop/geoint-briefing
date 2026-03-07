@@ -2,6 +2,79 @@
 {% block title %}Briefing — {{ date }}{% endblock %}
 {% block container_class %}wide{% endblock %}
 
+{# ── Reusable story card macro ── #}
+{% macro render_story_card(story, badge_type) %}
+{% set u = story.urgency %}
+<div class="story-card {% if badge_type == 'under-reported' %}lc-story {% endif %}u{{ u }}">
+  <div class="card-meta">
+    {% if badge_type == "ongoing" %}
+    <span class="ongoing-badge">Ongoing</span>
+    {% elif badge_type == "under-reported" %}
+    <span class="lc-badge">Under-Reported</span>
+    {% endif %}
+    {% if u == 5 %}<span class="badge b5">Crisis</span>
+    {% elif u == 4 %}<span class="badge b4">High</span>
+    {% elif u == 3 %}<span class="badge b3">Significant</span>
+    {% elif u == 2 %}<span class="badge b2">Moderate</span>
+    {% else %}<span class="badge b1">Routine</span>
+    {% endif %}
+  </div>
+
+  <div class="story-title">{{ story.title }}</div>
+
+  {% set main_entries = story.timeline | selectattr("entry_type", "ne", "historical") | list %}
+  {% set hist_entries = story.timeline | selectattr("entry_type", "eq", "historical") | list %}
+
+  <details class="analysis">
+    <summary><span class="arrow">&#9658;</span> Timeline ({{ main_entries|length }} events)</summary>
+    <div class="story-timeline">
+      {% for entry in main_entries[:15] %}
+      <div class="timeline-entry">
+        <div class="timeline-date">{{ entry.event_date | fmtdate }}</div>
+        <div class="timeline-content">
+          <div class="tl-title">
+            {% if entry.event_id %}
+              <a href="/event/{{ entry.event_id }}">{{ entry.title }}</a>
+            {% else %}
+              {{ entry.title }}
+            {% endif %}
+          </div>
+          {% if entry.summary_line and entry.summary_line != entry.title %}
+          <div class="tl-summary">{{ entry.summary_line }}</div>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+      {% if main_entries|length > 15 %}
+      <div class="show-all-hint">Show all {{ main_entries|length }} arc events</div>
+      {% endif %}
+
+      {% if hist_entries %}
+      <details class="hist-context">
+        <summary><span class="arrow">&#9658;</span> Historical context ({{ hist_entries|length }})</summary>
+        <div class="hist-entries">
+          {% for entry in hist_entries[:8] %}
+          <div class="timeline-entry hist">
+            <div class="timeline-date">{{ entry.event_date | fmtdate }}</div>
+            <div class="timeline-content">
+              <div class="tl-title">{{ entry.title }}</div>
+              {% if entry.summary_line and entry.summary_line != entry.title %}
+              <div class="tl-summary">{{ entry.summary_line }}</div>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+          {% if hist_entries|length > 8 %}
+          <div class="show-all-hint">Show all {{ hist_entries|length }} historical entries</div>
+          {% endif %}
+        </div>
+      </details>
+      {% endif %}
+    </div>
+  </details>
+</div>
+{% endmacro %}
+
 {% block content %}
 
 <div class="dash-layout">
@@ -20,7 +93,7 @@
   <p>Scraping feeds, clustering events, and analysing with Claude AI.<br>
      Usually takes 3&ndash;5 minutes. Page refreshes automatically.</p>
   <progress></progress>
-  <p style="margin-top:1rem;font-size:0.8rem;">
+  <p style="margin-top:1rem;font-size:var(--text-sm);">
     <a href="javascript:location.reload()">Refresh manually</a>
   </p>
 </div>
@@ -35,12 +108,35 @@
 {% else %}
 
 <div class="page-header">
-  <h1>Morning Briefing</h1>
+  <div>
+    <h1>Morning Briefing</h1>
+    <p class="page-subtitle">AI-powered geopolitical intelligence from 20+ sources</p>
+  </div>
   <span class="page-meta">{{ date }} &mdash; {{ events|length }} events</span>
+</div>
+
+{# ── Urgency legend ── #}
+<div class="urgency-legend">
+  <span class="badge b5" title="Active military conflict, humanitarian emergency, or nuclear/WMD threat">Crisis</span>
+  <span class="badge b4" title="Major escalation, significant diplomatic rupture, or large-scale unrest">High</span>
+  <span class="badge b3" title="Notable development with strategic implications">Significant</span>
+  <span class="badge b2" title="Incremental development in an existing situation">Moderate</span>
+  <span class="badge b1" title="Routine diplomatic or political activity">Routine</span>
+</div>
+
+{# ── Urgency filter bar ── #}
+<div class="filter-bar" id="filterBar">
+  <button class="filter-chip active" data-filter="all">All</button>
+  <button class="filter-chip" data-filter="5">Crisis</button>
+  <button class="filter-chip" data-filter="4">High</button>
+  <button class="filter-chip" data-filter="3">Significant</button>
+  <button class="filter-chip" data-filter="2">Moderate</button>
+  <button class="filter-chip" data-filter="1">Routine</button>
 </div>
 
 {# ── Pending Actions (close/merge suggestions) ── #}
 {% if actions %}
+<div class="admin-section">
 {% for action in actions %}
 <div class="action-banner" id="action-{{ action.id }}">
   <div>
@@ -61,9 +157,10 @@
   </div>
 </div>
 {% endfor %}
+</div>
 {% endif %}
 
-{# ── Live Stories Section ── #}
+{# ── Stories of G20 ── #}
 {% if stories %}
 <details class="stories-collapsible" open>
   <summary>
@@ -73,73 +170,14 @@
 
   <div class="stories-body">
 {% for story in stories %}
-{% set u = story.urgency %}
-<div class="story-card u{{ u }}">
-  <div class="card-meta">
-    <span class="live-badge">Live</span>
-    {% if u == 5 %}<span class="badge b5">Crisis</span>
-    {% elif u == 4 %}<span class="badge b4">High</span>
-    {% elif u == 3 %}<span class="badge b3">Significant</span>
-    {% elif u == 2 %}<span class="badge b2">Moderate</span>
-    {% else %}<span class="badge b1">Routine</span>
-    {% endif %}
-  </div>
-
-  <div class="story-title">{{ story.title }}</div>
-
-  {% set main_entries = story.timeline | selectattr("entry_type", "ne", "historical") | list %}
-  {% set hist_entries = story.timeline | selectattr("entry_type", "eq", "historical") | list %}
-
-  <details class="analysis">
-    <summary><span class="arrow">&#9658;</span> Timeline ({{ main_entries|length }} events)</summary>
-    <div class="story-timeline">
-      {% for entry in main_entries %}
-      <div class="timeline-entry">
-        <div class="timeline-date">{{ entry.event_date | fmtdate }}</div>
-        <div class="timeline-content">
-          <div class="tl-title">
-            {% if entry.event_id %}
-              <a href="/event/{{ entry.event_id }}">{{ entry.title }}</a>
-            {% else %}
-              {{ entry.title }}
-            {% endif %}
-          </div>
-          {% if entry.summary_line %}
-          <div class="tl-summary">{{ entry.summary_line }}</div>
-          {% endif %}
-        </div>
-      </div>
-      {% endfor %}
-
-      {% if hist_entries %}
-      <details class="hist-context">
-        <summary><span class="arrow">&#9658;</span> Historical context ({{ hist_entries|length }})</summary>
-        <div class="hist-entries">
-          {% for entry in hist_entries %}
-          <div class="timeline-entry hist">
-            <div class="timeline-date">{{ entry.event_date | fmtdate }}</div>
-            <div class="timeline-content">
-              <div class="tl-title">{{ entry.title }}</div>
-              {% if entry.summary_line %}
-              <div class="tl-summary">{{ entry.summary_line }}</div>
-              {% endif %}
-            </div>
-          </div>
-          {% endfor %}
-        </div>
-      </details>
-      {% endif %}
-    </div>
-  </details>
-</div>
+{{ render_story_card(story, "ongoing") }}
 {% endfor %}
-
   </div>
 </details>
-<div style="border-top:1px solid var(--border); margin:0.5rem 0 1.5rem;"></div>
+<hr class="divider">
 {% endif %}
 
-{# ── Live Stories Less Coverage Section ── #}
+{# ── Stories of the Rest ── #}
 {% if low_coverage_stories %}
 <details class="stories-collapsible" open>
   <summary>
@@ -149,70 +187,11 @@
 
   <div class="stories-body">
 {% for story in low_coverage_stories %}
-{% set u = story.urgency %}
-<div class="story-card lc-story u{{ u }}">
-  <div class="card-meta">
-    <span class="lc-badge">Under-Reported</span>
-    {% if u == 5 %}<span class="badge b5">Crisis</span>
-    {% elif u == 4 %}<span class="badge b4">High</span>
-    {% elif u == 3 %}<span class="badge b3">Significant</span>
-    {% elif u == 2 %}<span class="badge b2">Moderate</span>
-    {% else %}<span class="badge b1">Routine</span>
-    {% endif %}
-  </div>
-
-  <div class="story-title">{{ story.title }}</div>
-
-  {% set main_entries = story.timeline | selectattr("entry_type", "ne", "historical") | list %}
-  {% set hist_entries = story.timeline | selectattr("entry_type", "eq", "historical") | list %}
-
-  <details class="analysis">
-    <summary><span class="arrow">&#9658;</span> Timeline ({{ main_entries|length }} events)</summary>
-    <div class="story-timeline">
-      {% for entry in main_entries %}
-      <div class="timeline-entry">
-        <div class="timeline-date">{{ entry.event_date | fmtdate }}</div>
-        <div class="timeline-content">
-          <div class="tl-title">
-            {% if entry.event_id %}
-              <a href="/event/{{ entry.event_id }}">{{ entry.title }}</a>
-            {% else %}
-              {{ entry.title }}
-            {% endif %}
-          </div>
-          {% if entry.summary_line %}
-          <div class="tl-summary">{{ entry.summary_line }}</div>
-          {% endif %}
-        </div>
-      </div>
-      {% endfor %}
-
-      {% if hist_entries %}
-      <details class="hist-context">
-        <summary><span class="arrow">&#9658;</span> Historical context ({{ hist_entries|length }})</summary>
-        <div class="hist-entries">
-          {% for entry in hist_entries %}
-          <div class="timeline-entry hist">
-            <div class="timeline-date">{{ entry.event_date | fmtdate }}</div>
-            <div class="timeline-content">
-              <div class="tl-title">{{ entry.title }}</div>
-              {% if entry.summary_line %}
-              <div class="tl-summary">{{ entry.summary_line }}</div>
-              {% endif %}
-            </div>
-          </div>
-          {% endfor %}
-        </div>
-      </details>
-      {% endif %}
-    </div>
-  </details>
-</div>
+{{ render_story_card(story, "under-reported") }}
 {% endfor %}
-
   </div>
 </details>
-<div style="border-top:1px solid var(--border); margin:0.5rem 0 1.5rem;"></div>
+<hr class="divider">
 {% endif %}
 
 {# ── Regional breakdown (from standalone events only) ── #}
@@ -229,8 +208,7 @@
   {% endif %}
 {% endif %}
 
-{# Divider #}
-<div style="border-top:1px solid var(--border); margin-bottom:1.5rem;"></div>
+<hr class="divider">
 
 {% if not events and not stories and not low_coverage_stories %}
   <p style="color:var(--muted);">No events in this briefing.</p>
@@ -238,7 +216,7 @@
 
 {% for event in events %}
 {% set u = event.urgency %}
-<div class="event-card u{{ u }}">
+<div class="event-card u{{ u }}" data-urgency="{{ u }}">
 
   {# Meta row: badge + regions #}
   <div class="card-meta">
@@ -399,7 +377,7 @@ function storyAction(url, actionId) {
 
 function triggerPipeline() {
   var btn = document.getElementById('triggerBtn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Starting…'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Starting\u2026'; }
   fetch('/api/trigger', {method:'POST', headers: _authHeaders()})
     .then(function(r) {
       if (r.status === 401 || r.status === 403) {
@@ -412,5 +390,32 @@ function triggerPipeline() {
     })
     .catch(function() { location.reload(); });
 }
+
+/* Admin section visibility */
+(function() {
+  var sections = document.querySelectorAll('.admin-section');
+  function toggle() {
+    var show = !!sessionStorage.getItem('admin_token');
+    sections.forEach(function(s) { s.style.display = show ? '' : 'none'; });
+  }
+  toggle();
+  window.addEventListener('storage', toggle);
+})();
+
+/* Urgency filter */
+(function() {
+  var bar = document.getElementById('filterBar');
+  if (!bar) return;
+  bar.addEventListener('click', function(e) {
+    var chip = e.target.closest('.filter-chip');
+    if (!chip) return;
+    bar.querySelectorAll('.filter-chip').forEach(function(c) { c.classList.remove('active'); });
+    chip.classList.add('active');
+    var f = chip.dataset.filter;
+    document.querySelectorAll('.event-card[data-urgency]').forEach(function(card) {
+      card.style.display = (f === 'all' || card.dataset.urgency === f) ? '' : 'none';
+    });
+  });
+})();
 </script>
 {% endblock %}

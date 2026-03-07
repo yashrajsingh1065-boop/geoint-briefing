@@ -24,10 +24,6 @@ _RATE_LIMITS = {
     "resync":  (5, 60),       # 5 requests per minute
     "action":  (20, 60),      # 20 requests per minute
 }
-# Pipeline lock to prevent concurrent runs
-_pipeline_lock = threading.Lock()
-
-
 def _check_rate_limit(client_ip: str, action: str) -> None:
     max_requests, window_seconds = _RATE_LIMITS.get(action, (60, 60))
     now = time.time()
@@ -95,6 +91,26 @@ def _sanitize_url(url: str) -> str:
     return "#"
 
 
+def _classify_stories_by_g20(all_stories: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Split stories into G20-relevant and rest using batch actor/region lookup."""
+    from storage.database import get_all_story_actors_and_regions
+    from config import G20_COUNTRIES
+    story_ids = [s["id"] for s in all_stories]
+    all_data = get_all_story_actors_and_regions(story_ids)
+    stories, low_coverage_stories = [], []
+    for story in all_stories:
+        data = all_data.get(story["id"], {"actors": set(), "regions": set()})
+        is_g20 = bool(data["actors"] & G20_COUNTRIES or data["regions"] & G20_COUNTRIES)
+        if not is_g20:
+            text = (story.get("title", "") + " " + story.get("narrative", "")).lower()
+            is_g20 = any(c.lower() in text for c in G20_COUNTRIES)
+        if is_g20:
+            stories.append(story)
+        else:
+            low_coverage_stories.append(story)
+    return stories, low_coverage_stories
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="Geoint Briefing", docs_url=None, redoc_url=None)
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -136,9 +152,7 @@ def create_app() -> FastAPI:
         from storage.database import (
             get_briefing_by_date, get_events_for_briefing, get_market_snapshot,
             get_active_stories_with_timelines, get_pending_actions, get_events_linked_to_stories,
-            get_story_actors_and_regions,
         )
-        from config import G20_COUNTRIES
         today = date.today().isoformat()
         briefing = get_briefing_by_date(today)
         market = get_market_snapshot(today)
@@ -158,19 +172,7 @@ def create_app() -> FastAPI:
             events = get_events_for_briefing(briefing["id"])
             all_stories = get_active_stories_with_timelines()
             actions = get_pending_actions()
-            # Classify stories: G20 actors/regions → stories, rest → low_coverage_stories
-            for story in all_stories:
-                data = get_story_actors_and_regions(story["id"])
-                is_g20 = bool(data["actors"] & G20_COUNTRIES or data["regions"] & G20_COUNTRIES)
-                # Fallback: check title + narrative for G20 country names
-                if not is_g20:
-                    text = (story.get("title", "") + " " + story.get("narrative", "")).lower()
-                    is_g20 = any(c.lower() in text for c in G20_COUNTRIES)
-                if is_g20:
-                    stories.append(story)
-                else:
-                    low_coverage_stories.append(story)
-            # Filter out events that are part of stories (they show in the story timeline)
+            stories, low_coverage_stories = _classify_stories_by_g20(all_stories)
             story_event_ids = get_events_linked_to_stories(briefing["id"])
             events = [e for e in events if e["id"] not in story_event_ids]
 
@@ -197,9 +199,7 @@ def create_app() -> FastAPI:
         from storage.database import (
             get_briefing_by_date, get_events_for_briefing, get_market_snapshot,
             get_active_stories_with_timelines, get_pending_actions, get_events_linked_to_stories,
-            get_story_actors_and_regions,
         )
-        from config import G20_COUNTRIES
         briefing = get_briefing_by_date(date_str)
         market = get_market_snapshot(date_str)
 
@@ -218,16 +218,7 @@ def create_app() -> FastAPI:
             events = get_events_for_briefing(briefing["id"])
             all_stories = get_active_stories_with_timelines()
             actions = get_pending_actions()
-            for story in all_stories:
-                data = get_story_actors_and_regions(story["id"])
-                is_g20 = bool(data["actors"] & G20_COUNTRIES or data["regions"] & G20_COUNTRIES)
-                if not is_g20:
-                    text = (story.get("title", "") + " " + story.get("narrative", "")).lower()
-                    is_g20 = any(c.lower() in text for c in G20_COUNTRIES)
-                if is_g20:
-                    stories.append(story)
-                else:
-                    low_coverage_stories.append(story)
+            stories, low_coverage_stories = _classify_stories_by_g20(all_stories)
             story_event_ids = get_events_linked_to_stories(briefing["id"])
             events = [e for e in events if e["id"] not in story_event_ids]
 
@@ -302,17 +293,11 @@ def create_app() -> FastAPI:
         _verify_admin(request)
         _check_rate_limit(request.client.host, "trigger")
 
-        if not _pipeline_lock.acquire(blocking=False):
-            return JSONResponse({"status": "already_running"}, status_code=409)
+        def _run():
+            from scheduler.jobs import run_daily_pipeline
+            run_daily_pipeline()
 
-        def _run_with_lock():
-            try:
-                from scheduler.jobs import run_daily_pipeline
-                run_daily_pipeline()
-            finally:
-                _pipeline_lock.release()
-
-        t = threading.Thread(target=_run_with_lock, daemon=True, name="manual-pipeline")
+        t = threading.Thread(target=_run, daemon=True, name="manual-pipeline")
         t.start()
         return JSONResponse({"status": "started"})
 
@@ -349,13 +334,10 @@ def create_app() -> FastAPI:
         _check_rate_limit(request.client.host, "action")
         if action_id < 1:
             raise HTTPException(status_code=400, detail="Invalid action ID.")
-        from storage.database import resolve_story_action, merge_stories
-        from storage.database import _connect
-        with _connect() as conn:
-            row = conn.execute("SELECT * FROM story_actions WHERE id = ?", (action_id,)).fetchone()
-        if not row:
+        from storage.database import resolve_story_action, merge_stories, get_story_action
+        action = get_story_action(action_id)
+        if not action:
             return JSONResponse({"error": "action not found"}, status_code=404)
-        action = dict(row)
         if action["action_type"] != "merge" or not action.get("merge_target_id"):
             return JSONResponse({"error": "not a merge action"}, status_code=400)
         merge_stories(action["story_id"], action["merge_target_id"])

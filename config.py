@@ -115,7 +115,7 @@ G20_COUNTRIES = {
     "Russia", "Australia", "South Korea", "Mexico", "Indonesia",
     "Turkey", "Saudi Arabia", "Netherlands", "Switzerland", "Spain",
     # Common aliases
-    "USA", "US", "UK", "South Korea",
+    "USA", "US", "UK",
 }
 
 REGIONS = [

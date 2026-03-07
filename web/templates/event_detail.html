@@ -4,7 +4,7 @@
 {% block content %}
 
 <p style="margin-bottom:1.25rem;">
-  <a href="javascript:history.back()" style="font-size:0.85rem; color:var(--muted);">&larr; Back to briefing</a>
+  <a href="/briefing/today" onclick="if(document.referrer){history.back();return false;}" style="font-size:0.85rem; color:var(--muted);">&larr; Back to briefing</a>
 </p>
 
 <div class="card-meta" style="margin-bottom:0.75rem;">

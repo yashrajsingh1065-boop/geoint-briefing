@@ -349,8 +349,15 @@ def link_event_to_story(story_id: int, event_id: int, event_date: str, summary_l
 
 
 def add_historical_timeline_entry(story_id: int, event_date: str, headline: str, summary_line: str, entry_type: str = "arc") -> None:
-    """Add a historical timeline entry (no real event_id) for backfill."""
+    """Add a historical timeline entry (no real event_id) for backfill. Skips duplicates."""
     with _connect() as conn:
+        existing = conn.execute(
+            """SELECT id FROM story_events
+               WHERE story_id = ? AND event_date = ? AND headline = ?""",
+            (story_id, event_date, headline),
+        ).fetchone()
+        if existing:
+            return
         conn.execute(
             """INSERT INTO story_events (story_id, event_id, event_date, headline, summary_line, entry_type, added_at)
                VALUES (?, NULL, ?, ?, ?, ?, ?)""",
@@ -415,24 +422,39 @@ def get_story_with_timeline(story_id: int) -> dict | None:
 
 def get_active_stories_with_timelines() -> list[dict]:
     """Return all active stories with full timelines, sorted by urgency desc."""
-    stories = get_active_stories()
+    with _connect() as conn:
+        stories = conn.execute(
+            "SELECT * FROM stories WHERE status = 'active' ORDER BY urgency DESC, last_event_date DESC"
+        ).fetchall()
+        if not stories:
+            return []
+        story_ids = [s["id"] for s in stories]
+        placeholders = ",".join("?" * len(story_ids))
+        all_timeline = conn.execute(
+            f"""SELECT se.story_id, se.event_date, se.headline, se.summary_line, se.entry_type,
+                       se.event_id, e.title as event_title, e.urgency
+                FROM story_events se
+                LEFT JOIN events e ON e.id = se.event_id
+                WHERE se.story_id IN ({placeholders})
+                ORDER BY se.event_date DESC, se.added_at DESC""",
+            story_ids,
+        ).fetchall()
+    from collections import defaultdict
+    timeline_by_story: dict[int, list] = defaultdict(list)
+    for t in all_timeline:
+        timeline_by_story[t["story_id"]].append({
+            "event_date": t["event_date"],
+            "title": t["event_title"] or t["headline"],
+            "summary_line": t["summary_line"],
+            "event_id": t["event_id"],
+            "entry_type": t["entry_type"] or "live",
+            "urgency": t["urgency"] or 0,
+        })
     result = []
     for s in stories:
-        full = get_story_with_timeline(s["id"])
-        if full:
-            result.append(full)
-    return result
-
-
-def get_active_stories_with_timelines_by_tier(tier: str) -> list[dict]:
-    """Return active stories filtered by coverage_tier, with full timelines."""
-    all_stories = get_active_stories()
-    result = []
-    for s in all_stories:
-        if s.get("coverage_tier", "full") == tier:
-            full = get_story_with_timeline(s["id"])
-            if full:
-                result.append(full)
+        story = dict(s)
+        story["timeline"] = timeline_by_story.get(s["id"], [])
+        result.append(story)
     return result
 
 
@@ -553,29 +575,30 @@ def get_closed_stories() -> list[dict]:
             """SELECT * FROM stories WHERE status = 'closed'
                ORDER BY closed_at DESC""",
         ).fetchall()
-    result = []
-    for row in rows:
-        story = dict(row)
-        timeline = conn.execute(
-            """SELECT se.event_date, se.headline, se.summary_line,
-                      se.event_id, e.title as event_title, e.urgency
-               FROM story_events se
-               LEFT JOIN events e ON e.id = se.event_id
-               WHERE se.story_id = ?
-               ORDER BY se.event_date DESC, se.added_at DESC""",
-            (story["id"],),
-        ).fetchall()
-        story["timeline"] = [
-            {
-                "event_date": t["event_date"],
-                "title": t["event_title"] or t["headline"],
-                "summary_line": t["summary_line"],
-                "event_id": t["event_id"],
-                "urgency": t["urgency"] or 0,
-            }
-            for t in timeline
-        ]
-        result.append(story)
+        result = []
+        for row in rows:
+            story = dict(row)
+            timeline = conn.execute(
+                """SELECT se.event_date, se.headline, se.summary_line, se.entry_type,
+                          se.event_id, e.title as event_title, e.urgency
+                   FROM story_events se
+                   LEFT JOIN events e ON e.id = se.event_id
+                   WHERE se.story_id = ?
+                   ORDER BY se.event_date DESC, se.added_at DESC""",
+                (story["id"],),
+            ).fetchall()
+            story["timeline"] = [
+                {
+                    "event_date": t["event_date"],
+                    "title": t["event_title"] or t["headline"],
+                    "summary_line": t["summary_line"],
+                    "event_id": t["event_id"],
+                    "entry_type": t["entry_type"] or "live",
+                    "urgency": t["urgency"] or 0,
+                }
+                for t in timeline
+            ]
+            result.append(story)
     return result
 
 
@@ -589,6 +612,34 @@ def get_events_linked_to_stories(briefing_id: int) -> set[int]:
             (briefing_id,),
         ).fetchall()
     return {row["event_id"] for row in rows}
+
+
+def get_all_story_actors_and_regions(story_ids: list[int]) -> dict[int, dict]:
+    """Batch fetch actors and regions for multiple stories at once."""
+    if not story_ids:
+        return {}
+    result: dict[int, dict] = {sid: {"actors": set(), "regions": set()} for sid in story_ids}
+    placeholders = ",".join("?" * len(story_ids))
+    with _connect() as conn:
+        rows = conn.execute(
+            f"""SELECT se.story_id, e.actors, e.regions
+                FROM story_events se
+                JOIN events e ON e.id = se.event_id
+                WHERE se.story_id IN ({placeholders}) AND se.event_id IS NOT NULL""",
+            story_ids,
+        ).fetchall()
+    for r in rows:
+        sid = r["story_id"]
+        result[sid]["actors"].update(json.loads(r["actors"] or "[]"))
+        result[sid]["regions"].update(json.loads(r["regions"] or "[]"))
+    return result
+
+
+def get_story_action(action_id: int) -> dict | None:
+    """Return a single story action by id, or None."""
+    with _connect() as conn:
+        row = conn.execute("SELECT * FROM story_actions WHERE id = ?", (action_id,)).fetchone()
+    return dict(row) if row else None
 
 
 def list_briefing_dates() -> list[dict]:

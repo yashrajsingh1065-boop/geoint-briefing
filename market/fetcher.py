@@ -127,14 +127,3 @@ def fetch_all_market_data() -> tuple[list[dict], list[dict]]:
     logger.info("Fetched sector data for %d/%d sectors", len(sectors), len(_SECTORS))
 
     return indices, sectors
-
-
-# Legacy wrappers for backward compatibility
-def fetch_market_data() -> list[dict]:
-    indices, _ = fetch_all_market_data()
-    return indices
-
-
-def fetch_sector_data() -> list[dict]:
-    _, sectors = fetch_all_market_data()
-    return sectors

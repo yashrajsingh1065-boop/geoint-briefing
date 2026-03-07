@@ -78,6 +78,24 @@ def _tfidf_candidates(event_text: str, stories: list[dict], threshold: float) ->
         return []
 
 
+def _backfill_story_timeline(db, story_id: int, story_title: str, story_narrative: str) -> None:
+    """Generate and insert historical timeline entries for a newly created story."""
+    try:
+        from ai.analyst import generate_historical_timeline
+        history = generate_historical_timeline(story_title, story_narrative)
+        for entry in history:
+            db.add_historical_timeline_entry(
+                story_id,
+                entry["date"],
+                entry["headline"],
+                entry.get("summary", ""),
+                entry_type=entry.get("type", "arc"),
+            )
+        logger.info("Backfilled %d timeline entries for '%s'", len(history), story_title)
+    except Exception as exc:
+        logger.warning("Historical backfill failed for '%s': %s", story_title[:50], type(exc).__name__)
+
+
 def run_story_linking(briefing_id: int, date_str: str) -> None:
     """
     Main story linking orchestrator. Called after events are saved.
@@ -156,7 +174,7 @@ def run_story_linking(briefing_id: int, date_str: str) -> None:
                 time.sleep(0.5)
 
                 # Persist
-                db.link_event_to_story(story_id, event["id"], date_str, update.get("summary_line", event["title"][:100]))
+                db.link_event_to_story(story_id, event["id"], date_str, update.get("summary_line") or event.get("summary", event["title"])[:100])
                 db.update_story(story_id, update.get("narrative_addition", ""), update.get("urgency", 3), date_str)
                 linked_event_ids.add(event["id"])
                 story_match_counts[story_id] = story_match_counts.get(story_id, 0) + 1
@@ -207,23 +225,7 @@ def run_story_linking(briefing_id: int, date_str: str) -> None:
             db.link_event_to_story(story_id, event["id"], date_str, event["title"][:100], headline=event["title"][:200])
             linked_event_ids.add(event["id"])
             logger.info("Created new story: '%s'", story_title)
-
-            # Backfill historical timeline
-            try:
-                from ai.analyst import generate_historical_timeline
-                history = generate_historical_timeline(story_title, story_narrative)
-                for entry in history:
-                    db.add_historical_timeline_entry(
-                        story_id,
-                        entry["date"],
-                        entry["headline"],
-                        entry.get("summary", ""),
-                        entry_type=entry.get("type", "arc"),
-                    )
-                logger.info("Backfilled %d timeline entries for '%s'", len(history), story_title)
-                time.sleep(0.5)
-            except Exception as exc:
-                logger.warning("Historical backfill failed for '%s': %s", story_title[:50], type(exc).__name__)
+            _backfill_story_timeline(db, story_id, story_title, story_narrative)
 
     # Step 2b: Evaluate remaining unmatched events for low-coverage stories
     still_unmatched = [e for e in events if e["id"] not in linked_event_ids]
@@ -261,23 +263,7 @@ def run_story_linking(briefing_id: int, date_str: str) -> None:
             linked_event_ids.add(event["id"])
             low_coverage_created += 1
             logger.info("Created low-coverage story: '%s'", story_title)
-
-            # Backfill historical timeline (reuse existing logic)
-            try:
-                from ai.analyst import generate_historical_timeline
-                history = generate_historical_timeline(story_title, story_narrative)
-                for entry in history:
-                    db.add_historical_timeline_entry(
-                        story_id,
-                        entry["date"],
-                        entry["headline"],
-                        entry.get("summary", ""),
-                        entry_type=entry.get("type", "arc"),
-                    )
-                logger.info("Backfilled %d timeline entries for low-cov '%s'", len(history), story_title)
-                time.sleep(0.5)
-            except Exception as exc:
-                logger.warning("Historical backfill failed for low-cov '%s': %s", story_title[:50], type(exc).__name__)
+            _backfill_story_timeline(db, story_id, story_title, story_narrative)
 
     # Step 3: Check dormant stories for closure
     active_stories = db.get_active_stories()  # refresh
