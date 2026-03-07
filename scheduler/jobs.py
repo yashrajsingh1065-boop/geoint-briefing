@@ -75,10 +75,17 @@ def _run_pipeline_locked() -> None:
     )
 
     try:
-        # 1. Fetch
+        # 1a. Fetch RSS
         logger.info("Step 1/6: Fetching RSS feeds...")
         raw_articles = fetch_all_feeds(RSS_FEEDS)
-        logger.info("Fetched %d raw articles", len(raw_articles))
+        logger.info("Fetched %d RSS articles", len(raw_articles))
+
+        # 1b. Fetch from News APIs
+        from ingestion.api_fetcher import fetch_all_apis
+        api_articles = fetch_all_apis()
+        logger.info("Fetched %d API articles", len(api_articles))
+        raw_articles.extend(api_articles)
+        logger.info("Total raw articles (RSS + API): %d", len(raw_articles))
 
         # 2. Clean
         logger.info("Step 2/6: Cleaning articles...")

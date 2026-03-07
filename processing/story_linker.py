@@ -18,6 +18,10 @@ from config import (
     STORY_SEMANTIC_THRESHOLD,
     STORY_DORMANT_DAYS,
     MIN_ARTICLES_FOR_STORY,
+    MIN_ARTICLES_FOR_LOW_COVERAGE_STORY,
+    LOW_COVERAGE_DORMANT_DAYS,
+    LOW_COVERAGE_MAX_NEW_PER_RUN,
+    LOW_COVERAGE_PROMOTE_THRESHOLD,
 )
 from processing.embeddings import is_available as embeddings_available, encode, cosine_sim_query
 
@@ -87,6 +91,7 @@ def run_story_linking(briefing_id: int, date_str: str) -> None:
         match_event_to_stories,
         generate_story_update,
         evaluate_new_story,
+        evaluate_low_coverage_story,
         check_story_closure,
         check_story_merges,
     )
@@ -110,6 +115,7 @@ def run_story_linking(briefing_id: int, date_str: str) -> None:
         events = []
 
     linked_event_ids = set()
+    story_match_counts: dict[int, int] = {}  # track matches per story for auto-promotion
 
     # Step 1: Match events to existing stories
     if active_stories:
@@ -153,7 +159,25 @@ def run_story_linking(briefing_id: int, date_str: str) -> None:
                 db.link_event_to_story(story_id, event["id"], date_str, update.get("summary_line", event["title"][:100]))
                 db.update_story(story_id, update.get("narrative_addition", ""), update.get("urgency", 3), date_str)
                 linked_event_ids.add(event["id"])
+                story_match_counts[story_id] = story_match_counts.get(story_id, 0) + 1
                 logger.info("Linked event '%s' to story '%s'", event["title"][:50], matched_story["title"][:50])
+
+    # Step 1b: Auto-promote low-coverage stories with enough matches (per-run)
+    for story_id, count in story_match_counts.items():
+        if count >= LOW_COVERAGE_PROMOTE_THRESHOLD:
+            matched_story = next((s for s in active_stories if s["id"] == story_id), None)
+            if matched_story and matched_story.get("coverage_tier") == "low":
+                db.promote_story(story_id)
+                logger.info("Promoted low-coverage story '%s' to full (got %d matches this run)", matched_story["title"][:50], count)
+
+    # Step 1c: Auto-promote low-coverage stories with enough cumulative events
+    for story in active_stories:
+        if story.get("coverage_tier") != "low":
+            continue
+        total_events = db.count_story_events(story["id"])
+        if total_events >= LOW_COVERAGE_PROMOTE_THRESHOLD:
+            db.promote_story(story["id"])
+            logger.info("Promoted low-coverage story '%s' to full (%d cumulative events)", story["title"][:50], total_events)
 
     # Step 2: Evaluate unmatched events for new stories
     unmatched = [e for e in events if e["id"] not in linked_event_ids]
@@ -201,6 +225,60 @@ def run_story_linking(briefing_id: int, date_str: str) -> None:
             except Exception as exc:
                 logger.warning("Historical backfill failed for '%s': %s", story_title[:50], type(exc).__name__)
 
+    # Step 2b: Evaluate remaining unmatched events for low-coverage stories
+    still_unmatched = [e for e in events if e["id"] not in linked_event_ids]
+    low_coverage_created = 0
+    # Only consider events that weren't already evaluated in Step 2 (those with < MIN_ARTICLES_FOR_STORY)
+    low_cov_candidates = [
+        e for e in still_unmatched
+        if e.get("article_count", 0) >= MIN_ARTICLES_FOR_LOW_COVERAGE_STORY
+        and e.get("article_count", 0) < MIN_ARTICLES_FOR_STORY
+    ]
+    logger.info("Evaluating %d low-coverage candidates for new stories...", len(low_cov_candidates))
+
+    for event in low_cov_candidates:
+        if low_coverage_created >= LOW_COVERAGE_MAX_NEW_PER_RUN:
+            break
+
+        result = evaluate_low_coverage_story(
+            event["title"],
+            event.get("summary", ""),
+            event.get("article_count", 0),
+        )
+        time.sleep(0.5)
+
+        if result.get("create_story"):
+            story_title = result.get("story_title", event["title"][:100])
+            story_narrative = result.get("narrative", "")
+            story_id = db.create_story(
+                story_title,
+                story_narrative,
+                result.get("urgency", 3),
+                date_str,
+                coverage_tier="low",
+            )
+            db.link_event_to_story(story_id, event["id"], date_str, event["title"][:100], headline=event["title"][:200])
+            linked_event_ids.add(event["id"])
+            low_coverage_created += 1
+            logger.info("Created low-coverage story: '%s'", story_title)
+
+            # Backfill historical timeline (reuse existing logic)
+            try:
+                from ai.analyst import generate_historical_timeline
+                history = generate_historical_timeline(story_title, story_narrative)
+                for entry in history:
+                    db.add_historical_timeline_entry(
+                        story_id,
+                        entry["date"],
+                        entry["headline"],
+                        entry.get("summary", ""),
+                        entry_type=entry.get("type", "arc"),
+                    )
+                logger.info("Backfilled %d timeline entries for low-cov '%s'", len(history), story_title)
+                time.sleep(0.5)
+            except Exception as exc:
+                logger.warning("Historical backfill failed for low-cov '%s': %s", story_title[:50], type(exc).__name__)
+
     # Step 3: Check dormant stories for closure
     active_stories = db.get_active_stories()  # refresh
     today = date.fromisoformat(date_str)
@@ -217,11 +295,16 @@ def run_story_linking(briefing_id: int, date_str: str) -> None:
 
         days_dormant = (today - last_date).days
 
-        if days_dormant >= STORY_DORMANT_DAYS:
+        # Tier-aware dormancy thresholds
+        is_low_tier = story.get("coverage_tier") == "low"
+        dormant_threshold = LOW_COVERAGE_DORMANT_DAYS if is_low_tier else STORY_DORMANT_DAYS
+        closure_check_threshold = 15 if is_low_tier else 5
+
+        if days_dormant >= dormant_threshold:
             # Auto-close
             db.close_story(story["id"])
-            logger.info("Auto-closed dormant story: '%s' (%d days)", story["title"][:50], days_dormant)
-        elif days_dormant >= 5:
+            logger.info("Auto-closed dormant story: '%s' (%d days, tier=%s)", story["title"][:50], days_dormant, story.get("coverage_tier", "full"))
+        elif days_dormant >= closure_check_threshold:
             # Ask Claude if it should be closed
             closure = check_story_closure(
                 story["title"],

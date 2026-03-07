@@ -118,6 +118,17 @@ def init_db() -> None:
                 created_at   TEXT NOT NULL
             );
         """)
+        # Idempotent migration: add coverage_tier column
+        try:
+            conn.execute("ALTER TABLE stories ADD COLUMN coverage_tier TEXT NOT NULL DEFAULT 'full'")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+        # Idempotent migration: add source_type column to articles
+        try:
+            conn.execute("ALTER TABLE articles ADD COLUMN source_type TEXT NOT NULL DEFAULT 'rss'")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_stories_tier ON stories(coverage_tier)")
     _secure_db_permissions()
     logger.info("Database initialized")
 
@@ -146,8 +157,8 @@ def save_articles(briefing_id: int, articles: list[dict]) -> list[int]:
         for a in articles:
             cur = conn.execute(
                 """INSERT OR IGNORE INTO articles
-                   (briefing_id, source_name, url, title, body, published_at, fetched_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                   (briefing_id, source_name, url, title, body, published_at, fetched_at, source_type)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     briefing_id,
                     a.get("source_name", ""),
@@ -156,6 +167,7 @@ def save_articles(briefing_id: int, articles: list[dict]) -> list[int]:
                     a.get("body", ""),
                     a.get("published_at"),
                     a.get("fetched_at", _now()),
+                    a.get("source_type", "rss"),
                 ),
             )
             ids.append(cur.lastrowid)
@@ -315,13 +327,13 @@ def get_active_stories() -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def create_story(title: str, narrative: str, urgency: int, event_date: str) -> int:
+def create_story(title: str, narrative: str, urgency: int, event_date: str, coverage_tier: str = "full") -> int:
     """Create a new live story and return its id."""
     with _connect() as conn:
         cur = conn.execute(
-            """INSERT INTO stories (title, narrative, urgency, status, created_at, last_event_date)
-               VALUES (?, ?, ?, 'active', ?, ?)""",
-            (title, narrative, max(1, min(5, urgency)), _now(), event_date),
+            """INSERT INTO stories (title, narrative, urgency, status, created_at, last_event_date, coverage_tier)
+               VALUES (?, ?, ?, 'active', ?, ?, ?)""",
+            (title, narrative, max(1, min(5, urgency)), _now(), event_date, coverage_tier),
         )
         return cur.lastrowid
 
@@ -410,6 +422,55 @@ def get_active_stories_with_timelines() -> list[dict]:
         if full:
             result.append(full)
     return result
+
+
+def get_active_stories_with_timelines_by_tier(tier: str) -> list[dict]:
+    """Return active stories filtered by coverage_tier, with full timelines."""
+    all_stories = get_active_stories()
+    result = []
+    for s in all_stories:
+        if s.get("coverage_tier", "full") == tier:
+            full = get_story_with_timeline(s["id"])
+            if full:
+                result.append(full)
+    return result
+
+
+def promote_story(story_id: int) -> None:
+    """Promote a low-coverage story to full coverage tier."""
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE stories SET coverage_tier = 'full' WHERE id = ?",
+            (story_id,),
+        )
+
+
+def get_story_actors_and_regions(story_id: int) -> dict:
+    """Return aggregated actors and regions from all events linked to a story."""
+    with _connect() as conn:
+        rows = conn.execute(
+            """SELECT e.actors, e.regions
+               FROM story_events se
+               JOIN events e ON e.id = se.event_id
+               WHERE se.story_id = ? AND se.event_id IS NOT NULL""",
+            (story_id,),
+        ).fetchall()
+    actors = set()
+    regions = set()
+    for r in rows:
+        actors.update(json.loads(r["actors"] or "[]"))
+        regions.update(json.loads(r["regions"] or "[]"))
+    return {"actors": actors, "regions": regions}
+
+
+def count_story_events(story_id: int) -> int:
+    """Return total number of events linked to a story."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM story_events WHERE story_id = ?",
+            (story_id,),
+        ).fetchone()
+        return row[0] if row else 0
 
 
 def create_story_action(story_id: int, action_type: str, reason: str, merge_target_id: int | None = None) -> int:

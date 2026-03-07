@@ -625,6 +625,49 @@
       opacity: 0.7;
     }
 
+    /* ── Low-coverage (under-reported) story ── */
+    .lc-label {
+      color: #eab308;
+      font-size: 0.6rem;
+      margin-left: 0.35rem;
+    }
+
+    .lc-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-family: var(--font-mono);
+      font-size: 0.58rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      background: rgba(234,179,8,0.1);
+      color: #eab308;
+      border: 1px solid rgba(234,179,8,0.25);
+    }
+    .lc-badge::before {
+      content: "";
+      display: inline-block;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: #eab308;
+      opacity: 0.7;
+    }
+
+    .story-card.lc-story {
+      border-left-color: rgba(234,179,8,0.5);
+      opacity: 0.92;
+    }
+    .story-card.lc-story:hover { opacity: 1; }
+    .story-card.lc-story.u5 { border-left-color: rgba(234,179,8,0.7); }
+    .story-card.lc-story.u4 { border-left-color: rgba(234,179,8,0.6); }
+    .story-card.lc-story.u3 { border-left-color: rgba(234,179,8,0.5); }
+    .story-card.lc-story.u2 { border-left-color: rgba(234,179,8,0.4); }
+    .story-card.lc-story.u1 { border-left-color: rgba(234,179,8,0.3); }
+
     /* ── Concluded story (history) ── */
     .concluded-story {
       background: var(--surface);
@@ -647,6 +690,36 @@
       border: 1px solid rgba(100,116,139,0.25);
     }
 
+    /* ── Collapsible Stories Section ── */
+    .stories-collapsible {
+      margin-bottom: 1rem;
+    }
+    .stories-collapsible > summary {
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 0.5rem 0;
+      user-select: none;
+    }
+    .stories-collapsible > summary::-webkit-details-marker { display: none; }
+    .stories-collapsible > summary .arrow {
+      font-size: 0.5rem;
+      transition: transform 0.2s;
+    }
+    .stories-collapsible[open] > summary .arrow {
+      transform: rotate(90deg);
+    }
+    .stories-body {
+      margin-top: 0.5rem;
+    }
     /* ── Divider ── */
     .divider {
       border: none;

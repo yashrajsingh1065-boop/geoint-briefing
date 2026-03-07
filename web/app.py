@@ -136,7 +136,9 @@ def create_app() -> FastAPI:
         from storage.database import (
             get_briefing_by_date, get_events_for_briefing, get_market_snapshot,
             get_active_stories_with_timelines, get_pending_actions, get_events_linked_to_stories,
+            get_story_actors_and_regions,
         )
+        from config import G20_COUNTRIES
         today = date.today().isoformat()
         briefing = get_briefing_by_date(today)
         market = get_market_snapshot(today)
@@ -145,16 +147,29 @@ def create_app() -> FastAPI:
             return templates.TemplateResponse(
                 "dashboard.html",
                 {"request": request, "briefing": None, "events": [], "date": today,
-                 "status": "none", "market": market, "stories": [], "actions": []},
+                 "status": "none", "market": market, "stories": [], "low_coverage_stories": [], "actions": []},
             )
 
         events = []
         stories = []
+        low_coverage_stories = []
         actions = []
         if briefing["status"] == "complete":
             events = get_events_for_briefing(briefing["id"])
-            stories = get_active_stories_with_timelines()
+            all_stories = get_active_stories_with_timelines()
             actions = get_pending_actions()
+            # Classify stories: G20 actors/regions → stories, rest → low_coverage_stories
+            for story in all_stories:
+                data = get_story_actors_and_regions(story["id"])
+                is_g20 = bool(data["actors"] & G20_COUNTRIES or data["regions"] & G20_COUNTRIES)
+                # Fallback: check title + narrative for G20 country names
+                if not is_g20:
+                    text = (story.get("title", "") + " " + story.get("narrative", "")).lower()
+                    is_g20 = any(c.lower() in text for c in G20_COUNTRIES)
+                if is_g20:
+                    stories.append(story)
+                else:
+                    low_coverage_stories.append(story)
             # Filter out events that are part of stories (they show in the story timeline)
             story_event_ids = get_events_linked_to_stories(briefing["id"])
             events = [e for e in events if e["id"] not in story_event_ids]
@@ -169,6 +184,7 @@ def create_app() -> FastAPI:
                 "status":   briefing["status"],
                 "market":   market,
                 "stories":  stories,
+                "low_coverage_stories": low_coverage_stories,
                 "actions":  actions,
             },
         )
@@ -181,7 +197,9 @@ def create_app() -> FastAPI:
         from storage.database import (
             get_briefing_by_date, get_events_for_briefing, get_market_snapshot,
             get_active_stories_with_timelines, get_pending_actions, get_events_linked_to_stories,
+            get_story_actors_and_regions,
         )
+        from config import G20_COUNTRIES
         briefing = get_briefing_by_date(date_str)
         market = get_market_snapshot(date_str)
 
@@ -189,16 +207,27 @@ def create_app() -> FastAPI:
             return templates.TemplateResponse(
                 "dashboard.html",
                 {"request": request, "briefing": None, "events": [], "date": date_str,
-                 "status": "none", "market": market, "stories": [], "actions": []},
+                 "status": "none", "market": market, "stories": [], "low_coverage_stories": [], "actions": []},
             )
 
         events = []
         stories = []
+        low_coverage_stories = []
         actions = []
         if briefing["status"] == "complete":
             events = get_events_for_briefing(briefing["id"])
-            stories = get_active_stories_with_timelines()
+            all_stories = get_active_stories_with_timelines()
             actions = get_pending_actions()
+            for story in all_stories:
+                data = get_story_actors_and_regions(story["id"])
+                is_g20 = bool(data["actors"] & G20_COUNTRIES or data["regions"] & G20_COUNTRIES)
+                if not is_g20:
+                    text = (story.get("title", "") + " " + story.get("narrative", "")).lower()
+                    is_g20 = any(c.lower() in text for c in G20_COUNTRIES)
+                if is_g20:
+                    stories.append(story)
+                else:
+                    low_coverage_stories.append(story)
             story_event_ids = get_events_linked_to_stories(briefing["id"])
             events = [e for e in events if e["id"] not in story_event_ids]
 
@@ -212,6 +241,7 @@ def create_app() -> FastAPI:
                 "status":   briefing["status"],
                 "market":   market,
                 "stories":  stories,
+                "low_coverage_stories": low_coverage_stories,
                 "actions":  actions,
             },
         )

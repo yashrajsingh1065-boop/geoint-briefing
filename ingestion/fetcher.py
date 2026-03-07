@@ -106,6 +106,7 @@ def _fetch_single_feed(feed_config: dict) -> list[dict]:
             "body":        body,
             "published_at": published_at,
             "fetched_at":  datetime.now(timezone.utc).isoformat(),
+            "source_type": "rss",
         })
 
     return articles

@@ -50,6 +50,32 @@ STORY_DORMANT_DAYS               = 15    # auto-close after N days with no new e
 MIN_ARTICLES_FOR_STORY           = 3     # minimum articles in an event to consider it for a new story
 NARRATIVE_MAX_CHARS              = 100_000  # cap story narrative growth
 
+# ── Less Coverage Stories ────────────────────────────────────────────────
+MIN_ARTICLES_FOR_LOW_COVERAGE_STORY = 1
+LOW_COVERAGE_DORMANT_DAYS           = 30
+LOW_COVERAGE_MAX_NEW_PER_RUN        = 5
+LOW_COVERAGE_PROMOTE_THRESHOLD      = 3   # promote to 'full' if 3+ events match in one run
+
+# ── News API Sources ──────────────────────────────────────────────────────
+GDELT_ENABLED = os.environ.get("GDELT_ENABLED", "true").lower() == "true"
+GDELT_QUERIES = [
+    "(theme:MILITARY OR theme:ARMED_CONFLICT)",
+    "(theme:DIPLOMACY OR theme:FOREIGN_POLICY)",
+    "(theme:PROTEST OR theme:POLITICAL_TURMOIL)",
+]
+GDELT_MAX_ARTICLES = 75      # per query
+GDELT_MAX_TOTAL = 100        # cap after all queries
+GDELT_FETCH_WORKERS = 5      # concurrent trafilatura fetches
+
+NEWSDATA_ENABLED = os.environ.get("NEWSDATA_ENABLED", "false").lower() == "true"
+NEWSDATA_API_KEY = os.environ.get("NEWSDATA_API_KEY", "")
+NEWSDATA_CATEGORIES = "politics,world"
+NEWSDATA_MAX_ARTICLES = 50
+
+WORLDNEWS_ENABLED = os.environ.get("WORLDNEWS_ENABLED", "false").lower() == "true"
+WORLDNEWS_API_KEY = os.environ.get("WORLDNEWS_API_KEY", "")
+WORLDNEWS_MAX_ARTICLES = 50
+
 # ── Security ─────────────────────────────────────────────────────────────────
 OPEN_BROWSER = os.environ.get("OPEN_BROWSER", "auto")  # "auto", "true", "false"
 LOG_LEVEL    = os.environ.get("LOG_LEVEL", "INFO").upper()
@@ -82,6 +108,16 @@ def validate_feed_url(url: str) -> bool:
         return False
 
 # ── Regions ────────────────────────────────────────────────────────────────────
+# Top-20 GDP countries (used for story classification)
+G20_COUNTRIES = {
+    "United States", "China", "Germany", "Japan", "India",
+    "United Kingdom", "France", "Italy", "Brazil", "Canada",
+    "Russia", "Australia", "South Korea", "Mexico", "Indonesia",
+    "Turkey", "Saudi Arabia", "Netherlands", "Switzerland", "Spain",
+    # Common aliases
+    "USA", "US", "UK", "South Korea",
+}
+
 REGIONS = [
     "India", "United States", "China", "Russia", "European Union",
     "Middle East", "Africa", "Southeast Asia", "Latin America",
